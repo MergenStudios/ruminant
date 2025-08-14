@@ -101,7 +101,7 @@ def main():
 
         signal.signal(signal.SIGUSR1, print_stacktrace)
 
-    parser = argparse.ArgumentParser(description="Ruminant parser")
+    parser = argparse.ArgumentParser(description="Ruminant parser hehe funny text")
 
     parser.add_argument("file",
                         default="-",
