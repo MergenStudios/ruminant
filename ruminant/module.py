@@ -1,6 +1,7 @@
 import os
 
 modules = []
+debug = os.environ.get("RUMINANT_DEBUG_MODE", "0") != "0"
 
 
 def register(cls):

@@ -9,6 +9,9 @@ import binascii
 import base64
 
 
+debug = module.debug
+
+
 @module.register
 class TorrentModule(module.RuminantModule):
     desc = "BitTorrent files."
@@ -552,10 +555,8 @@ class OpenTimestampsProofModule(module.RuminantModule):
         return meta
 
 
-# https://docs.oracle.com/en/java/javase/11/docs/specs/serialization/protocol.html#stream-elements
 @module.register
 class JavaSerializationData(module.RuminantModule):
-    dev = True
     desc = "Java serialization data as produced by java.io.ObjectOutputStream and similar classes."
 
     def identify(buf, ctx):
@@ -566,14 +567,39 @@ class JavaSerializationData(module.RuminantModule):
         self.handles[self.index] = obj
         self.index += 1
 
+    def resolve(self, obj):
+        if obj["type"] == "reference":
+            return self.handles[obj["data"]["handle"]]
+
+        return obj
+
+    def read_type(self, typ):
+        match typ:
+            case "I":
+                val = self.buf.ri32()
+            case "Z":
+                val = bool(self.buf.ru8())
+            case "F":
+                val = self.buf.rf32()
+            case "D":
+                val = self.buf.rf64()
+            case "S":
+                val = self.buf.ri16()
+            case "J":
+                val = self.buf.ri64()
+            case "L" | "[":
+                val = self.read_element()
+            case _:
+                raise ValueError(f"Unknown classdata type {typ}")
+
+        return val
+
     def read_classdesc_data(self, obj, classdata):
         fields = []
         head = obj
         while head["type"] != "null":
-            if head["type"] == "reference":
-                head = self.handles[head["data"]["handle"]]
-
-            fields.append(head["data"]["fields"])
+            head = self.resolve(head)
+            fields.insert(0, head["data"]["fields"])
             head = head["data"]["super"]
 
         _fields = []
@@ -581,21 +607,16 @@ class JavaSerializationData(module.RuminantModule):
             _fields += group
         fields = _fields
 
-        val = None
         for field in fields:
-            match field["type"]:
-                case "I":
-                    val = self.buf.ri32()
-                case "Z":
-                    val = bool(self.buf.ru8())
-                case "L" | "[":
-                    val = self.read_element()
-                case _:
-                    raise ValueError(f"Unknown classdata type {field['type']}")
+            classdata[field["name"]] = self.read_type(field["type"])
 
-            classdata[field["name"]] = val
+    def debug_print(self, name):
+        print("    " * self.level + name + " (" + str(self.buf.tell()) + ")")
 
     def read_element(self):
+        if debug:
+            self.level += 1
+
         tc = self.buf.ru8()
         obj = {}
         obj["type"] = None
@@ -604,11 +625,17 @@ class JavaSerializationData(module.RuminantModule):
         match tc:
             case 0x70:
                 obj["type"] = "null"
+                if debug:
+                    self.debug_print(obj["type"])
             case 0x71:
                 obj["type"] = "reference"
+                if debug:
+                    self.debug_print(obj["type"])
                 obj["data"]["handle"] = self.buf.ru32() - 0x7e0000
             case 0x72:
                 obj["type"] = "classdesc"
+                if debug:
+                    self.debug_print(obj["type"])
                 obj["data"]["name"] = self.buf.rs(self.buf.ru16())
                 obj["data"]["serial-version-uid"] = self.buf.rh(8)
                 self.handle(obj)
@@ -642,7 +669,9 @@ class JavaSerializationData(module.RuminantModule):
 
             case 0x73:
                 obj["type"] = "object"
-                obj["data"]["classdesc"] = self.read_element()
+                if debug:
+                    self.debug_print(obj["type"])
+                obj["data"]["classdesc"] = self.resolve(self.read_element())
                 self.handle(obj)
 
                 obj["data"]["classdata"] = {}
@@ -689,26 +718,49 @@ class JavaSerializationData(module.RuminantModule):
                 obj["type"] = "string"
                 self.handle(obj)
                 obj["data"]["payload"] = self.buf.rs(self.buf.ru16())
+                if debug:
+                    self.debug_print(obj["type"] + " " + obj["data"]["payload"])
             case 0x75:
                 obj["type"] = "array"
-                obj["data"]["classdesc"] = self.read_element()
+                if debug:
+                    self.debug_print(obj["type"])
+                obj["data"]["classdesc"] = self.resolve(self.read_element())
                 self.handle(obj)
                 obj["data"]["values"] = []
-                for i in range(0, self.buf.ru32()):
-                    obj["data"]["values"].append(self.read_element())
+
+                if (
+                    len(obj["data"]["classdesc"]["data"]["name"]) == 2
+                    and obj["data"]["classdesc"]["data"]["name"][1] in "IZFDS"
+                ):
+                    typ = obj["data"]["classdesc"]["data"]["name"][1]
+                    for i in range(0, self.buf.ru32()):
+                        obj["data"]["values"].append(self.read_type(typ))
+                else:
+                    for i in range(0, self.buf.ru32()):
+                        obj["data"]["values"].append(self.read_element())
             case 0x77:
                 obj["type"] = "blockdata"
+                if debug:
+                    self.debug_print(obj["type"])
                 obj["data"]["payload"] = self.buf.rh(self.buf.ru8())
             case 0x78:
                 obj["type"] = "endblockdata"
+                if debug:
+                    self.debug_print(obj["type"])
             case _:
                 raise ValueError(f"Unknown type 0x{hex(tc)[2:].zfill(2)}")
+
+        if debug:
+            self.level -= 1
 
         return obj
 
     def chew(self):
         meta = {}
         meta["type"] = "java-serialization"
+
+        if debug:
+            self.level = 0
 
         self.buf.skip(2)
         meta["version"] = self.buf.ru16()
@@ -719,10 +771,14 @@ class JavaSerializationData(module.RuminantModule):
         while True:
             try:
                 meta["elements"].append(self.read_element())
-            #            finally:
-            #                pass
             except Exception as e:
-                print(e)
+                if debug:
+                    for handle in self.handles.values():
+                        if handle["type"] == "classdesc":
+                            print(handle["data"]["name"], handle)
+
+                    raise e
+
                 break
 
         return meta

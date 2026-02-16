@@ -106,6 +106,7 @@ Ruminant is still in early alpha but it can already process the following file t
 * xz files
 * UF2 files
 * Android adb backup files
+* Java object serialization data
 
 # How do I install it?
 Run `pip3 install ruminant`.

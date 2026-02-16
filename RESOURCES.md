@@ -76,6 +76,7 @@ This is a list of useful resources.
 
 # Java
 * https://docs.oracle.com/javase/specs/jvms/se25/html
+* https://docs.oracle.com/en/java/javase/11/docs/specs/serialization/protocol.html#stream-elements
 
 # PE/COFF
 * https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
