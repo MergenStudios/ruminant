@@ -278,6 +278,7 @@ class PdfModule(module.RuminantModule):
                                 | "/CCITTFaxDecode"
                                 | "/JPXDecode"
                                 | "/JBIG2Decode"
+                                | "/Crypt"
                             ):
                                 pass
                             case _:
