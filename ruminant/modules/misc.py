@@ -593,7 +593,7 @@ class JavaSerializationData(module.RuminantModule):
                 case _:
                     raise ValueError(f"Unknown classdata type {field['type']}")
 
-        classdata[field["name"]] = val
+            classdata[field["name"]] = val
 
     def read_element(self):
         tc = self.buf.ru8()
@@ -719,10 +719,10 @@ class JavaSerializationData(module.RuminantModule):
         while True:
             try:
                 meta["elements"].append(self.read_element())
-            finally:
-                pass
-        #            except Exception as e:
-        #                print(e)
-        #                break
+            #            finally:
+            #                pass
+            except Exception as e:
+                print(e)
+                break
 
         return meta
