@@ -575,16 +575,20 @@ class JavaSerializationData(module.RuminantModule):
 
     def read_type(self, typ):
         match typ:
-            case "I":
-                val = self.buf.ri32()
             case "Z":
                 val = bool(self.buf.ru8())
             case "F":
                 val = self.buf.rf32()
             case "D":
                 val = self.buf.rf64()
+            case "B":
+                val = self.buf.ri8()
             case "S":
                 val = self.buf.ri16()
+            case "C":
+                val = chr(self.buf.ru16())
+            case "I":
+                val = self.buf.ri32()
             case "J":
                 val = self.buf.ri64()
             case "L" | "[":
