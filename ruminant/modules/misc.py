@@ -734,7 +734,7 @@ class JavaSerializationData(module.RuminantModule):
 
                 if (
                     len(obj["data"]["classdesc"]["data"]["name"]) == 2
-                    and obj["data"]["classdesc"]["data"]["name"][1] in "IZFDS"
+                    and obj["data"]["classdesc"]["data"]["name"][1] in "BCDFIJSZ"
                 ):
                     typ = obj["data"]["classdesc"]["data"]["name"][1]
                     for i in range(0, self.buf.ru32()):
