@@ -7,6 +7,7 @@ import gzip
 import zlib
 import binascii
 import base64
+import json
 
 
 debug = module.debug
@@ -784,5 +785,33 @@ class JavaSerializationData(module.RuminantModule):
                     raise e
 
                 break
+
+        return meta
+
+
+@module.register
+class SafeTensorsModule(module.RuminantModule):
+    desc = "Hugging Face Safetensors files."
+
+    def identify(buf, ctx):
+        return buf.pu64l() < buf.available() and buf.peek(10)[8:] == b'{"'
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "safetensors"
+
+        meta["header"] = json.loads(self.buf.rs(self.buf.ru64l()))
+        base = self.buf.tell()
+
+        max_offset = 0
+        meta["sections"] = {}
+        for k, v in meta["header"].items():
+            self.buf.seek(v["data_offsets"][0] + base)
+            with self.buf.sub(v["data_offsets"][1] - v["data_offsets"][0]):
+                meta["sections"][k] = chew(self.buf, blob_mode=True)
+
+            max_offset = max(max_offset, v["data_offsets"][1])
+
+        self.buf.seek(max_offset + base)
 
         return meta
