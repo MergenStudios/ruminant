@@ -483,6 +483,9 @@ def read_der(buf):
                 data["value"] = datetime.strptime(
                     time_string, "%Y%m%d%H%M%S"
                 ).isoformat()
+        case 0x1e:
+            data["type"] = "BMPString"
+            data["value"] = buf.readunit().decode("utf-16be")
         case _:
             data["type"] = f"UNKNOWN ({hex(tag)})"
 
