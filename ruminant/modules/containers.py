@@ -816,7 +816,7 @@ class RIFFModule(module.RuminantModule):
                 chunk["data"]["coding-history"] = utils.decode(
                     self.buf.readunit()
                 ).rstrip("\x00")
-            case "iXML":
+            case "iXML" | "_PMX":
                 chunk["data"]["xml"] = utils.xml_to_dict(self.buf.readunit())
             case "ID3 ":
                 with self.buf.subunit():
