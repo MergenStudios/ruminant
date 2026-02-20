@@ -201,6 +201,8 @@ def main(dev=False):
         "--shallow", action="store_true", help="Do not chew recovered blobs recursively"
     )
 
+    parser.add_argument("--version", action="store_true", help="Print version and exit")
+
     # look for tqdm
     has_tqdm = True
     try:
@@ -226,6 +228,10 @@ def main(dev=False):
         sys.argv.append("--help")
 
     args = parser.parse_args()
+
+    if args.version:
+        print(f"ruminant v{constants.RUMINANT_VERSION}", file=sys.stderr)
+        exit(0)
 
     if args.self_test:
         from . import test_core
