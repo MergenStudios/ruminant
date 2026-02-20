@@ -774,6 +774,8 @@ class JavaSerializationData(module.RuminantModule):
         self.handles = {}
         meta["elements"] = []
         while True:
+            bak = self.buf.backup()
+
             try:
                 meta["elements"].append(self.read_element())
             except Exception as e:
@@ -784,6 +786,7 @@ class JavaSerializationData(module.RuminantModule):
 
                     raise e
 
+                self.buf.restore(bak)
                 break
 
         return meta
