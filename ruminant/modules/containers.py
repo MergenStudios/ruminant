@@ -1390,3 +1390,39 @@ class AndroidBackupModule(module.RuminantModule):
             meta["data"] = chew(fd)
 
         return meta
+
+
+@module.register
+class CabinetModule(module.RuminantModule):
+    dev = "True"
+    desc = "Microsoft cabinet files."
+
+    def identify(buf, ctx):
+        return buf.peek(4) == b"MSCF"
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "cab"
+
+        self.buf.skip(4)
+
+        meta["header"] = {}
+        meta["header"]["reserved1"] = self.buf.ru32l()
+        meta["header"]["total-size"] = self.buf.ru32l()
+        meta["header"]["reserved2"] = self.buf.ru32l()
+        meta["header"]["cffile-offset"] = self.buf.ru32l()
+        meta["header"]["reserved3"] = self.buf.ru32l()
+        temp = self.buf.ru8()
+        meta["header"]["version"] = f"{self.buf.ru8()}.{temp}"
+        meta["header"]["folder-count"] = self.buf.ru16l()
+        meta["header"]["file-count"] = self.buf.ru16l()
+        meta["header"]["flags"] = utils.unpack_flags(
+            self.buf.ru16l(),
+            ((1, "PREV_CABINET"), (2, "NEXT_CABINET"), (3, "RESERVE_PRESENT")),
+        )
+        meta["header"]["set-id"] = self.buf.ru16l()
+        meta["header"]["set-offset"] = self.buf.ru16l()
+
+        self.buf.seek(meta["header"]["total-size"])
+
+        return meta

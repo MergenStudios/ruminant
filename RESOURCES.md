@@ -110,3 +110,6 @@ This is a list of useful resources.
 # Android stuff
 * https://android.googlesource.com/platform/ndk/+/ndk-r17b/parse_elfnote.py
 * https://source.android.com/docs/core/runtime/dex-format#file-layout
+
+# Microsoft Cabinet
+* https://download.microsoft.com/download/4/d/a/4da14f27-b4ef-4170-a6e6-5b1ef85b1baa/[ms-cab].pdf
