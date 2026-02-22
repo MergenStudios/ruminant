@@ -1423,6 +1423,83 @@ class CabinetModule(module.RuminantModule):
         meta["header"]["set-id"] = self.buf.ru16l()
         meta["header"]["set-offset"] = self.buf.ru16l()
 
+        meta["header"]["reserve-size"] = 0
+        meta["header"]["folder-reserve-size"] = 0
+        meta["header"]["data-reserve-size"] = 0
+        if "RESERVE_PRESENT" in meta["header"]["flags"]["names"]:
+            meta["header"]["reserve-size"] = self.buf.ru16l()
+            meta["header"]["folder-reserve-size"] = self.buf.ru8()
+            meta["header"]["data-reserve-size"] = self.buf.ru8()
+            meta["header"]["reserved"] = self.buf.rh(
+                meta["header"]["data-reserve-size"]
+            )
+
+        if "PREV_CABINET" in meta["header"]["flags"]["names"]:
+            meta["header"]["previous-cabinet"] = self.buf.rzs()
+            meta["header"]["previous-disk"] = self.buf.rzs()
+
+        if "NEXT_CABINET" in meta["header"]["flags"]["names"]:
+            meta["header"]["next-cabinet"] = self.buf.rzs()
+            meta["header"]["next-disk"] = self.buf.rzs()
+
+        meta["folders"] = []
+        for i in range(0, meta["header"]["folder-count"]):
+            folder = {}
+            folder["data-offset"] = self.buf.ru32l()
+            folder["data-count"] = self.buf.ru16l()
+            folder["compression"] = utils.unraw(
+                self.buf.ru16l(),
+                2,
+                {0x0000: "None", 0x0001: "MSZIP", 0x0002: "Quantum", 0x0003: "LZX"},
+                True,
+            )
+
+            if "RESERVE_PRESENT" in meta["header"]["flags"]["names"]:
+                folder["reserve"] = self.buf.rh(meta["header"]["folder-reserve-size"])
+
+            meta["folders"].append(folder)
+
+        self.buf.seek(meta["header"]["cffile-offset"])
+        meta["files"] = []
+        for i in range(0, meta["header"]["file-count"]):
+            file = {}
+            file["uncompressed-size"] = self.buf.ru32l()
+            file["uncompressed-folder-offset"] = self.buf.ru32l()
+            file["folder-index"] = self.buf.ru16l()
+            date = self.buf.ru16l()
+            tme = self.buf.ru16l()
+            file["date"] = datetime.datetime(
+                (date >> 9) + 1980,
+                (date >> 5) & 0x0f,
+                date & 0x1f,
+                tme >> 11,
+                (tme >> 5) & 0x3f,
+                (tme & 0x0f) << 1,
+            ).isoformat()
+            file["attribs"] = utils.unpack_flags(
+                self.buf.ru16l(),
+                (
+                    (1, "read-only"),
+                    (2, "hidden"),
+                    (3, "system"),
+                    (6, "archive"),
+                    (7, "executable"),
+                    (8, "UTF name"),
+                ),
+            )
+            if "UTF name" in file["attribs"]["names"]:
+                name = b""
+                while self.buf.pu16l():
+                    name += self.buf.read(2)
+
+                self.buf.skip(2)
+
+                file["name"] = name.decode("utf-16le")
+            else:
+                file["name"] = self.buf.rzs()
+
+            meta["files"].append(file)
+
         self.buf.seek(meta["header"]["total-size"])
 
         return meta
