@@ -1812,7 +1812,10 @@ class PeModule(module.RuminantModule):
         meta["msdos-header"]["reserved1"] = [self.buf.ru16l() for i in range(0, 10)]
         meta["msdos-header"]["pe-header-offset"] = self.buf.ru32l()
         meta["msdos-header"]["stub"] = utils.unraw(
-            self.buf.rh(meta["msdos-header"]["pe-header-offset"] - self.buf.tell()),
+            self.buf
+            .read(meta["msdos-header"]["pe-header-offset"] - self.buf.tell())[:64]
+            .rstrip(b"\x00")
+            .hex(),
             0,
             constants.PE_MSDOS_STUBS,
         )
