@@ -242,18 +242,24 @@ def mp4_time_to_iso(mp4_time):
 
 
 # stream deflate compressed data from src to dst
-def stream_deflate(src, dst, compressed_size, chunk_size=1 << 24):
+def stream_deflate(src, dst, compressed_size, chunk_size=1 << 24, revert=False):
     remaining = compressed_size
     decompressor = zlib.decompressobj(-zlib.MAX_WBITS)
 
     while remaining > 0:
         chunk = src.read(min(chunk_size, remaining))
+        if len(chunk) == 0:
+            break
+
         dst.write(decompressor.decompress(chunk))
         remaining -= len(chunk)
 
     flushed = decompressor.flush()
     if flushed:
         dst.write(flushed)
+
+    if revert:
+        src.seek(src.tell() - len(decompressor.unused_data))
 
 
 # stream bzip2 compressed data from src to dst

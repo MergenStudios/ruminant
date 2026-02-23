@@ -1394,7 +1394,6 @@ class AndroidBackupModule(module.RuminantModule):
 
 @module.register
 class CabinetModule(module.RuminantModule):
-    dev = "True"
     desc = "Microsoft cabinet files."
 
     def identify(buf, ctx):
@@ -1442,6 +1441,7 @@ class CabinetModule(module.RuminantModule):
             meta["header"]["next-cabinet"] = self.buf.rzs()
             meta["header"]["next-disk"] = self.buf.rzs()
 
+        fds = []
         meta["folders"] = []
         for i in range(0, meta["header"]["folder-count"]):
             folder = {}
@@ -1456,6 +1456,61 @@ class CabinetModule(module.RuminantModule):
 
             if "RESERVE_PRESENT" in meta["header"]["flags"]["names"]:
                 folder["reserve"] = self.buf.rh(meta["header"]["folder-reserve-size"])
+
+            folder["compressed-size"] = 0
+            folder["uncompressed-size"] = 0
+            folder["data-segments"] = []
+            with self.buf:
+                self.buf.seek(folder["data-offset"])
+
+                fd = utils.tempfd()
+                for j in range(folder["data-count"]):
+                    segment = {}
+                    segment["checksum"] = self.buf.ru32l()
+                    segment["compressed-size"] = self.buf.ru16l()
+                    segment["uncompressed-size"] = self.buf.ru16l()
+
+                    folder["compressed-size"] += segment["compressed-size"]
+                    folder["uncompressed-size"] += segment["uncompressed-size"]
+
+                    if "RESERVE_PRESENT" in meta["header"]["flags"]["names"]:
+                        segment["reserve"] = self.buf.rh(
+                            meta["header"]["data-reserve-size"]
+                        )
+
+                    fd.write(self.buf.read(segment["compressed-size"]))
+
+                    folder["data-segments"].append(segment)
+
+                fd = Buf(fd)
+                try:
+                    match folder["compression"]:
+                        case "MSZIP":
+                            fd.seek(0)
+                            fd2 = utils.tempfd()
+
+                            while fd.available() > 0:
+                                assert fd.read(2) == b"CK", (
+                                    "invalid MSZIP chunk padding"
+                                )
+                                utils.stream_deflate(
+                                    fd, fd2, fd.available(), revert=True
+                                )
+
+                            fd.close()
+                            fd = Buf(fd2)
+                        case _:
+                            raise ValueError()
+                except (AssertionError, ValueError):
+                    folder["unknown"] = True
+                    fd = None
+
+                if fd:
+                    fd.seek(0)
+                    with fd:
+                        folder["data"] = chew(fd, blob_mode=True)
+
+                fds.append(fd)
 
             meta["folders"].append(folder)
 
@@ -1498,7 +1553,18 @@ class CabinetModule(module.RuminantModule):
             else:
                 file["name"] = self.buf.rzs()
 
+            fd = fds[file["folder-index"]]
+            if fd:
+                fd.seek(file["uncompressed-folder-offset"])
+
+                with fd.sub(file["uncompressed-size"]):
+                    file["data"] = chew(fd)
+
             meta["files"].append(file)
+
+        for fd in fds:
+            if fd:
+                fd.close()
 
         self.buf.seek(meta["header"]["total-size"])
 
