@@ -201,7 +201,7 @@ def main(dev=False):
         "--shallow", action="store_true", help="Do not chew recovered blobs recursively"
     )
 
-    parser.add_argument("--version", action="store_true", help="Print version and exit")
+    parser.add_argument("--version", "-v", action="store_true", help="Print version and exit")
 
     # look for tqdm
     has_tqdm = True
