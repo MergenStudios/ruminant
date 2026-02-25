@@ -584,6 +584,20 @@ class PdfModule(module.RuminantModule):
                 and len(token) % 2 == 0
             ):
                 token = token.encode("latin-1").decode("utf-16le")
+            elif (
+                len(token) >= 2
+                and ord(token[0]) == 376
+                and ord(token[1]) == 377
+                and len(token) % 2 == 0
+            ):
+                # I don't know either
+                # pdfTeX is weird
+                # also death to UTF-16
+                s = b""
+                for i in range(2, len(token), 2):
+                    s += (ord(token[i]) * 256 + ord(token[i + 1])).to_bytes(2, "big")
+
+                token = s.decode("utf-16be")
 
             return token.replace("\\(", "(").replace("\\)", ")")
         elif token.startswith("<"):
