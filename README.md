@@ -109,6 +109,7 @@ Ruminant is still in early alpha but it can already process the following file t
 * Java object serialization data
 * Safetensors files
 * Microsoft cabinet files
+* btrfs stream files
 
 # How do I install it?
 Run `pip3 install ruminant`.

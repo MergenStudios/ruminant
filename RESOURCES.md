@@ -113,3 +113,6 @@ This is a list of useful resources.
 
 # Microsoft Cabinet
 * https://download.microsoft.com/download/4/d/a/4da14f27-b4ef-4170-a6e6-5b1ef85b1baa/[ms-cab].pdf
+
+# btrfs
+* https://btrfs.readthedocs.io/en/latest/dev/dev-send-stream.html
