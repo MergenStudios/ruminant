@@ -447,10 +447,13 @@ class BtrfsSteamModule(module.RuminantModule):
                     # string
                     case 0x000d | 0x000f | 0x0010 | 0x0011 | 0x0016:
                         value["value"] = self.buf.rs(self.buf.unit)
+                    # data (string)
+                    case 0x000e:
+                        value["value"] = self.buf.rs(self.buf.unit)
                     # data
-                    case 0x000e | 0x0013:
+                    case 0x0013:
                         with self.buf.subunit():
-                            value["value"] = chew(self.buf)
+                            value["value"] = chew(self.buf, blob_mode=True)
                     case _:
                         value["unknown"] = True
 
