@@ -2385,3 +2385,215 @@ class AsfModule(module.RuminantModule):
             meta["objects"].append(self.read_object())
 
         return meta
+
+
+@module.register
+class SwfModule(module.RuminantModule):
+    dev = True
+    desc = "SWF Adobe Flash files."
+
+    def identify(buf, ctx):
+        return buf.peek(3) in (b"FWS", b"CWS", b"ZWS")
+
+    def read_rect(
+        self,
+    ):
+        res = {}
+        res["nbits"] = self.buf.rb(5)
+        res["x-min"] = self.buf.rb(res["nbits"])
+        res["x-max"] = self.buf.rb(res["nbits"])
+        res["y-min"] = self.buf.rb(res["nbits"])
+        res["y-max"] = self.buf.rb(res["nbits"])
+        self.buf.align()
+        return res
+
+    def read_tags(self):
+        tags = []
+        should_break = False
+
+        while self.buf.available() >= 4 and not should_break:
+            tag = {}
+            temp = self.buf.ru16l()
+            code = temp >> 6
+            tag["length"] = temp & 0x3f
+
+            if tag["length"] == 63:
+                tag["length"] = self.buf.ru32l()
+
+            self.buf.pasunit(tag["length"])
+
+            tag["type"] = None
+            tag["data"] = {}
+            match code:
+                case 0:
+                    tag["type"] = "End"
+                    should_break = True
+                case 1:
+                    tag["type"] = "ShowFrame"
+                case 2:
+                    tag["type"] = "DefineShape"
+                    tag["data"]["id"] = self.buf.ru16l()
+                    tag["data"]["fill-bits"] = self.buf.rb(4)
+                    tag["data"]["line-bits"] = self.buf.rb(4)
+
+                    tag["data"]["shapes"] = []
+                    while True:
+                        shape = {}
+
+                        shape["type"] = self.buf.rb(1)
+
+                        if shape["type"] == 0:
+                            shape["reserved"] = self.buf.rb(0)
+                            shape["has-line-style"] = bool(self.buf.rb(1))
+                            shape["has-fill-style1"] = bool(self.buf.rb(1))
+                            shape["has-fill-style0"] = bool(self.buf.rb(1))
+                            shape["has-move-to"] = bool(self.buf.rb(1))
+
+                            if not (
+                                shape["reserved"]
+                                or shape["has-line-style"]
+                                or shape["has-fill-style1"]
+                                or shape["has-fill-style0"]
+                                or shape["has-move-to"]
+                            ):
+                                break
+
+                            if shape["has-move-to"]:
+                                shape["move-bits"] = self.buf.rb(5)
+                                shape["move-x"] = self.buf.rsb(shape["move-bits"])
+                                shape["move-y"] = self.buf.rsb(shape["move-bits"])
+
+                            if shape["has-fill-style0"]:
+                                shape["fill-style0"] = self.buf.rb(
+                                    tag["data"]["fill-bits"]
+                                )
+
+                            if shape["has-fill-style1"]:
+                                shape["fill-style1"] = self.buf.rb(
+                                    tag["data"]["fill-bits"]
+                                )
+
+                            if shape["has-line-style"]:
+                                shape["line-style"] = self.buf.rb(
+                                    tag["data"]["line-bits"]
+                                )
+                        else:
+                            shape["edge-type"] = self.buf.rb(1)
+                            shape["coord-size"] = self.buf.rb(4) + 2
+
+                            if shape["edge-type"] == 0:
+                                shape["control-delta-x"] = self.buf.rsb(
+                                    shape["coord-size"]
+                                )
+                                shape["control-delta-y"] = self.buf.rsb(
+                                    shape["coord-size"]
+                                )
+                                shape["anchor-delta-x"] = self.buf.rsb(
+                                    shape["coord-size"]
+                                )
+                                shape["anchor-delta-y"] = self.buf.rsb(
+                                    shape["coord-size"]
+                                )
+                            else:
+                                shape["has-x-and-y"] = bool(self.buf.rb(1))
+
+                                if shape["has-x-and-y"]:
+                                    shape["delta-x"] = self.buf.rsb(shape["coord-size"])
+                                    shape["delta-y"] = self.buf.rsb(shape["coord-size"])
+                                else:
+                                    shape["has-x-or-y"] = bool(self.buf.rb(1))
+
+                                    if shape["has-x-or-y"]:
+                                        shape["delta-x"] = self.buf.rsb(
+                                            shape["coord-size"]
+                                        )
+                                    else:
+                                        shape["delta-y"] = self.buf.rsb(
+                                            shape["coord-size"]
+                                        )
+
+                        tag["data"]["shapes"].append(shape)
+
+                    self.buf.align()
+
+                case 9:
+                    tag["type"] = "SetBackgroundColor"
+                    tag["data"]["red"] = self.buf.ru8()
+                    tag["data"]["green"] = self.buf.ru8()
+                    tag["data"]["blue"] = self.buf.ru8()
+                case 39:
+                    tag["type"] = "DefineSprite"
+                    tag["data"]["sprite-id"] = self.buf.ru16l()
+                    tag["data"]["frame-count"] = self.buf.ru16l()
+                    tag["data"]["tags"] = self.read_tags()
+                case 69:
+                    tag["type"] = "FileAttributes"
+                    tag["data"]["reserved1"] = self.buf.rb(1)
+                    tag["data"]["use-direct-blit"] = self.buf.rb(1)
+                    tag["data"]["use-gpu"] = self.buf.rb(1)
+                    tag["data"]["has-metadata"] = self.buf.rb(1)
+                    tag["data"]["actionscript-3"] = self.buf.rb(1)
+                    tag["data"]["reserved2"] = self.buf.rb(2)
+                    tag["data"]["use-network"] = self.buf.rb(1)
+                    tag["data"]["reserved3"] = self.buf.rb(24)
+                case 86:
+                    tag["type"] = "DefineSceneAndFrameLabelData"
+
+                    tag["data"]["scenes"] = []
+                    for i in range(0, self.buf.ruleb()):
+                        scene = {}
+                        scene["frame-offset"] = self.buf.ruleb()
+                        scene["name"] = self.buf.rzs()
+
+                        tag["data"]["scenes"].append(scene)
+
+                    tag["data"]["frame-labels"] = []
+                    for i in range(0, self.buf.ruleb()):
+                        label = {}
+                        label["frame-number"] = self.buf.ruleb()
+                        label["name"] = self.buf.rzs()
+
+                        tag["data"]["frame-labels"].append(label)
+                case _:
+                    tag["type"] = f"Unknown ({code})"
+                    tag["unknown"] = True
+
+            self.buf.sapunit()
+            tags.append(tag)
+
+        return tags
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "swf"
+
+        meta["compression"] = {"FWS": "none", "CWS": "zlib", "ZWS": "lzma"}[
+            self.buf.rs(3)
+        ]
+
+        meta["version"] = self.buf.ru8()
+        meta["decompressed-length"] = self.buf.ru32l()
+
+        match meta["compression"]:
+            case "none":
+                pass
+            case "zlib":
+                fd = utils.tempfd()
+                utils.stream_zlib(self.buf, fd, self.buf.available(), revert=True)
+                self.buf = Buf(fd)
+                self.buf.seek(0)
+            case "lzma":
+                fd = utils.tempfd()
+                utils.stream_xz(self.buf, fd, self.buf.available())
+                self.buf = Buf(fd)
+                self.buf.seek(0)
+            case _:
+                raise ValueError("Unknown compression")
+
+        meta["frame-size"] = self.read_rect()
+        meta["frame-rate"] = self.buf.rfp16l()
+        meta["frame-count"] = self.buf.ru16l()
+
+        meta["tags"] = self.read_tags()
+
+        return meta

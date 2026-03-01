@@ -519,9 +519,21 @@ class Buf(object):
 
         return i
 
+    def rsb(self, count):
+        v = self.rb(count)
+
+        if v >= 2 ** (count - 1):
+            v -= 2**count
+
+        return v
+
     def pb(self, count):
         with self:
             return self.rb(count)
+
+    def psb(self, count):
+        with self:
+            return self.rsb(count)
 
     def align(self):
         if self._bits != 0:

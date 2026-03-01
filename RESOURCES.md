@@ -116,3 +116,6 @@ This is a list of useful resources.
 
 # btrfs
 * https://btrfs.readthedocs.io/en/latest/dev/dev-send-stream.html
+
+# SWF
+* https://www.m2osw.com/swf_tags

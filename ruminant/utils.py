@@ -288,7 +288,7 @@ def stream_generic(decompressor, src, dst, compressed_size, chunk_size=1 << 24):
 
 
 # stream zlib compressed data from src to dst
-def stream_zlib(src, dst, compressed_size, chunk_size=1 << 24):
+def stream_zlib(src, dst, compressed_size, chunk_size=1 << 24, revert=False):
     remaining = compressed_size
     decompressor = zlib.decompressobj()
 
@@ -300,6 +300,9 @@ def stream_zlib(src, dst, compressed_size, chunk_size=1 << 24):
     flushed = decompressor.flush()
     if flushed:
         dst.write(flushed)
+
+    if revert:
+        src.seek(src.tell() - len(decompressor.unused_data))
 
 
 # stream xz compressed data from src to dst
