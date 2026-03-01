@@ -246,7 +246,7 @@ class VbmetaModule(module.RuminantModule):
 
         # align to next page
         if self.buf.tell() % 4096:
-            self.buf.skip(4096 - (self.buf.tell % 4096))
+            self.buf.skip(4096 - (self.buf.tell() % 4096))
 
         return meta
 
