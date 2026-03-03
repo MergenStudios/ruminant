@@ -258,6 +258,7 @@ class McaModule(module.RuminantModule):
 
 @module.register
 class BlendModule(module.RuminantModule):
+    dev = True
     desc = "Blender project files, currently kinda broken."
 
     def identify(buf, ctx):
