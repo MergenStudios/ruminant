@@ -2407,6 +2407,67 @@ class SwfModule(module.RuminantModule):
         self.buf.align()
         return res
 
+    def read_matrix(self):
+        mat = {}
+
+        mat["has-scale"] = self.buf.rb(1)
+        if mat["has-scale"]:
+            mat["scale-bits"] = self.buf.rb(5)
+            mat["scale-x"] = self.buf.rsb(mat["scale-bits"])
+            mat["scale-y"] = self.buf.rsb(mat["scale-bits"])
+
+        mat["has-rotate"] = self.buf.rb(1)
+        if mat["has-rotate"]:
+            mat["rotate-bits"] = self.buf.rb(5)
+            mat["rotate-x"] = self.buf.rsb(mat["rotate-bits"])
+            mat["rotate-y"] = self.buf.rsb(mat["rotate-bits"])
+
+        mat["transform-bits"] = self.buf.rb(5)
+        mat["transform-x"] = self.buf.rsb(mat["transform-bits"])
+        mat["transform-y"] = self.buf.rsb(mat["transform-bits"])
+
+        self.buf.align()
+        return mat
+
+    def read_color_transform(self, place_object_ver2=False):
+        ct = {}
+
+        ct["has-add"] = self.buf.rb(1)
+        ct["has-mult"] = self.buf.rb(1)
+        ct["bits"] = self.buf.rb(4)
+
+        if ct["has-mult"]:
+            ct["red-mult"] = self.buf.rsb(ct["bits"])
+            ct["green-mult"] = self.buf.rsb(ct["bits"])
+            ct["blue-mult"] = self.buf.rsb(ct["bits"])
+
+            if place_object_ver2:
+                ct["alpha-mult"] = self.buf.rsb(ct["bits"])
+
+        if ct["has-add"]:
+            ct["red-add"] = self.buf.rsb(ct["bits"])
+            ct["green-add"] = self.buf.rsb(ct["bits"])
+            ct["blue-add"] = self.buf.rsb(ct["bits"])
+
+            if place_object_ver2:
+                ct["alpha-add"] = self.buf.rsb(ct["bits"])
+
+        self.buf.align()
+        return ct
+
+    def read_any_filter(self):
+        # TODO: https://www.m2osw.com/swf_struct_any_filter
+
+        filt = {}
+        typ = self.buf.ru8()
+
+        match typ:
+            case _:
+                raise ValueError(f"Unknown filter type {typ}")
+
+        self.buf.align()
+        return filt
+
     def read_tags(self):
         tags = []
         should_break = False
@@ -2444,10 +2505,10 @@ class SwfModule(module.RuminantModule):
 
                         if shape["type"] == 0:
                             shape["reserved"] = self.buf.rb(0)
-                            shape["has-line-style"] = bool(self.buf.rb(1))
-                            shape["has-fill-style1"] = bool(self.buf.rb(1))
-                            shape["has-fill-style0"] = bool(self.buf.rb(1))
-                            shape["has-move-to"] = bool(self.buf.rb(1))
+                            shape["has-line-style"] = self.buf.rb(1)
+                            shape["has-fill-style1"] = self.buf.rb(1)
+                            shape["has-fill-style0"] = self.buf.rb(1)
+                            shape["has-move-to"] = self.buf.rb(1)
 
                             if not (
                                 shape["reserved"]
@@ -2495,13 +2556,13 @@ class SwfModule(module.RuminantModule):
                                     shape["coord-size"]
                                 )
                             else:
-                                shape["has-x-and-y"] = bool(self.buf.rb(1))
+                                shape["has-x-and-y"] = self.buf.rb(1)
 
                                 if shape["has-x-and-y"]:
                                     shape["delta-x"] = self.buf.rsb(shape["coord-size"])
                                     shape["delta-y"] = self.buf.rsb(shape["coord-size"])
                                 else:
-                                    shape["has-x-or-y"] = bool(self.buf.rb(1))
+                                    shape["has-x-or-y"] = self.buf.rb(1)
 
                                     if shape["has-x-or-y"]:
                                         shape["delta-x"] = self.buf.rsb(
@@ -2521,6 +2582,50 @@ class SwfModule(module.RuminantModule):
                     tag["data"]["red"] = self.buf.ru8()
                     tag["data"]["green"] = self.buf.ru8()
                     tag["data"]["blue"] = self.buf.ru8()
+                case 26:
+                    tag["type"] = "PlaceObject2"
+
+                    if self.version >= 8 and code == 70:
+                        tag["data"]["reserved-ver8"] = self.buf.rb(5)
+                        tag["data"]["place-bitmap-caching"] = self.buf.rb(1)
+                        tag["data"]["place-blend-mode"] = self.buf.rb(1)
+                        tag["data"]["place-filters"] = self.buf.rb(1)
+
+                    if self.version >= 5:
+                        tag["data"]["has-actions"] = self.buf.rb(1)
+                    else:
+                        tag["data"]["reserved-ver5"] = self.buf.rb(1)
+
+                    tag["data"]["has-clipping-depth"] = self.buf.rb(1)
+                    tag["data"]["has-name"] = self.buf.rb(1)
+                    tag["data"]["has-morph-position"] = self.buf.rb(1)
+                    tag["data"]["has-color-transform"] = self.buf.rb(1)
+                    tag["data"]["has-matrix"] = self.buf.rb(1)
+                    tag["data"]["has-id-ref"] = self.buf.rb(1)
+                    tag["data"]["has-move"] = self.buf.rb(1)
+                    tag["data"]["depth"] = self.buf.ru16l()
+
+                    if tag["data"]["has-id-ref"]:
+                        tag["data"]["object-id-ref"] = self.buf.ru16l()
+
+                    if tag["data"]["has-matrix"]:
+                        tag["data"]["matrix"] = self.read_matrix()
+
+                    if tag["data"]["has-color-transform"]:
+                        tag["data"]["color-transform"] = self.read_color_transform(
+                            code == 26
+                        )
+
+                    if tag["data"]["has-morph-position"]:
+                        tag["data"]["morph-position"] = self.buf.ru16l()
+
+                    if tag["data"]["has-name"]:
+                        tag["data"]["name"] = self.buf.rzs()
+
+                    if tag["data"]["has-clipping-depth"]:
+                        tag["data"]["clipping-depth"] = self.buf.ru16l()
+
+                    self.buf.align()
                 case 39:
                     tag["type"] = "DefineSprite"
                     tag["data"]["sprite-id"] = self.buf.ru16l()
@@ -2572,6 +2677,8 @@ class SwfModule(module.RuminantModule):
         ]
 
         meta["version"] = self.buf.ru8()
+        self.version = meta["version"]
+
         meta["decompressed-length"] = self.buf.ru32l()
 
         match meta["compression"]:
