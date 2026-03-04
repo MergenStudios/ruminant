@@ -438,24 +438,26 @@ class PdfModule(module.RuminantModule):
 
             elif buf.peek(2) == b"<<":
                 level += 1
-                d += buf.read(1)
+                d += buf.read(2)
             elif buf.peek(2) == b">>":
                 level -= 1
-                d += buf.read(1)
+                d += buf.read(2)
 
                 if level == 0:
                     d += buf.read(1)
                     break
             elif buf.peek(1) == b"[":
                 level += 1
+                d += buf.read(1)
             elif buf.peek(1) == b"]":
                 level -= 1
+                d += buf.read(1)
 
                 if level == 0:
                     d += buf.read(1)
                     break
-
-            d += buf.read(1)
+            else:
+                d += buf.read(1)
 
         tokens = list(self.tokenize(d.decode("latin-1")))
         return self.parse_value(tokens)
