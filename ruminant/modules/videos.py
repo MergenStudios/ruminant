@@ -1124,7 +1124,33 @@ class IsoModule(module.RuminantModule):
                     self.buf.ru8()
                     for i in range(0, atom["data"]["output-channel-count"])
                 ]
+        elif typ == "fiel":
+            atom["data"]["field-count"] = self.buf.ru8()
+            atom["data"]["field-order"] = self.buf.ru8()
+        elif typ == "chnl":
+            self.read_version(atom)
+            atom["data"]["stream-structure"] = self.buf.ru8()
+            atom["data"]["defined-layout"] = self.buf.ru8()
+            atom["data"]["omitted-channels-map"] = self.buf.ru16()
 
+            if atom["data"]["defined-layout"] == 0:
+                atom["data"]["speaker-count"] = self.buf.ru8()
+                for i in range(0, atom["data"]["speaker-count"]):
+                    speaker = {}
+                    speaker["position"] = self.buf.ru8()
+                    speaker["azimuth"] = self.buf.ru8()
+                    speaker["elevation"] = self.buf.ru8()
+
+                    atom["data"]["speakers"].append(speaker)
+        elif typ == "pcmC":
+            # so they only give you a sample of ISO/IEC 23003-5 but it's such
+            # a small standard that the sample is the whole thing
+            # see https://cdn.standards.iteh.ai/samples/77752/a17f98e0bb664a939b031b6a969995d9/ISO-IEC-23003-5-2020.pdf
+            self.read_version(atom)
+            atom["data"]["flags"] = utils.unpack_flags(
+                self.buf.ru8(), ((0, "little-endian"),)
+            )
+            atom["data"]["sample-size"] = self.buf.ru8()
         elif typ[0] == "©" or typ in ("iods", "SDLN", "smrd"):
             if typ[:2] == "©T" and self.buf.pu16() == self.buf.unit - 4:
                 length = self.buf.ru16()
@@ -1134,7 +1160,8 @@ class IsoModule(module.RuminantModule):
                 atom["data"]["payload"] = self.buf.readunit().decode("latin-1")
         elif typ in ("hint", "cdsc", "font", "hind", "vdep", "vplx", "subt", "cdep"):
             atom["data"]["track-id"] = self.buf.ru32()
-        elif typ in ("avc1", "hvc1", "vp09", "encv", "av01"):
+        # video sample boxes
+        elif typ in ("avc1", "hvc1", "vp09", "encv", "av01", "hev1"):
             atom["data"]["reserved1"] = self.buf.rh(6)
             atom["data"]["data_reference_index"] = self.buf.ru16()
             atom["data"]["pre-defined1"] = self.buf.rh(2)
@@ -1153,6 +1180,7 @@ class IsoModule(module.RuminantModule):
             atom["data"]["pre-defined3"] = self.buf.rh(2)
 
             self.read_more(atom)
+        # audio sample boxes
         elif typ in (
             "samr",
             "sawb",
@@ -1169,6 +1197,7 @@ class IsoModule(module.RuminantModule):
             "enca",
             "fLaC",
             "Opus",
+            "ipcm",
         ):
             # see https://github.com/sannies/mp4parser for reference
             atom["data"]["reserved1"] = self.buf.rh(6)
