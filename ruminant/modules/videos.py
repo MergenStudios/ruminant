@@ -262,25 +262,6 @@ class IsoModule(module.RuminantModule):
             atom["data"]["flags"] = {"raw": flags, "local": bool(flags & 1)}
 
             atom["data"]["location"] = self.buf.readunit()[:-1].decode("utf-8")
-        elif typ in ("avc1", "hvc1", "vp09", "encv"):
-            atom["data"]["reserved1"] = self.buf.rh(6)
-            atom["data"]["data_reference_index"] = self.buf.ru16()
-            atom["data"]["pre-defined1"] = self.buf.rh(2)
-            atom["data"]["reserved2"] = self.buf.rh(2)
-            atom["data"]["pre-defined2"] = self.buf.rh(12)
-            atom["data"]["width"] = self.buf.ru16()
-            atom["data"]["height"] = self.buf.ru16()
-            atom["data"]["horizresolution"] = self.buf.rfp32()
-            atom["data"]["vertresolution"] = self.buf.rfp32()
-            atom["data"]["reserved3"] = self.buf.rh(4)
-            atom["data"]["frame-count"] = self.buf.ru16()
-            name_length = self.buf.ru8()
-            name = self.buf.read(31)
-            atom["data"]["compressorname"] = name[:name_length].decode("utf-8")
-            atom["data"]["depth"] = self.buf.ru16()
-            atom["data"]["pre-defined3"] = self.buf.rh(2)
-
-            self.read_more(atom)
         elif typ == "avcC":
             atom["data"]["configurationVersion"] = self.buf.ru8()
             atom["data"]["AVCProfileIndication"] = self.buf.ru8()
@@ -1128,6 +1109,50 @@ class IsoModule(module.RuminantModule):
         elif typ == "bidb":
             with self.buf.subunit():
                 atom["data"]["file"] = chew(self.buf)
+        elif typ == "dOps":
+            atom["data"]["version"] = self.buf.ru8()
+            atom["data"]["output-channel-count"] = self.buf.ru8()
+            atom["data"]["pre-skip"] = self.buf.ru16()
+            atom["data"]["input-sample-rate"] = self.buf.ru32()
+            atom["data"]["output-gain"] = self.buf.ri16()
+            atom["data"]["channel-mapping-family"] = self.buf.ru8()
+
+            if atom["data"]["channel-mapping-family"] != 0:
+                atom["data"]["stream-count"] = self.buf.ru8()
+                atom["data"]["coupled-count"] = self.buf.ru8()
+                atom["data"]["channel-mapping"] = [
+                    self.buf.ru8()
+                    for i in range(0, atom["data"]["output-channel-count"])
+                ]
+
+        elif typ[0] == "©" or typ in ("iods", "SDLN", "smrd"):
+            if typ[:2] == "©T" and self.buf.pu16() == self.buf.unit - 4:
+                length = self.buf.ru16()
+                self.buf.skip(2)
+                atom["data"]["payload"] = self.buf.rs(length)
+            else:
+                atom["data"]["payload"] = self.buf.readunit().decode("latin-1")
+        elif typ in ("hint", "cdsc", "font", "hind", "vdep", "vplx", "subt", "cdep"):
+            atom["data"]["track-id"] = self.buf.ru32()
+        elif typ in ("avc1", "hvc1", "vp09", "encv", "av01"):
+            atom["data"]["reserved1"] = self.buf.rh(6)
+            atom["data"]["data_reference_index"] = self.buf.ru16()
+            atom["data"]["pre-defined1"] = self.buf.rh(2)
+            atom["data"]["reserved2"] = self.buf.rh(2)
+            atom["data"]["pre-defined2"] = self.buf.rh(12)
+            atom["data"]["width"] = self.buf.ru16()
+            atom["data"]["height"] = self.buf.ru16()
+            atom["data"]["horizresolution"] = self.buf.rfp32()
+            atom["data"]["vertresolution"] = self.buf.rfp32()
+            atom["data"]["reserved3"] = self.buf.rh(4)
+            atom["data"]["frame-count"] = self.buf.ru16()
+            name_length = self.buf.ru8()
+            name = self.buf.read(31)
+            atom["data"]["compressorname"] = name[:name_length].decode("utf-8")
+            atom["data"]["depth"] = self.buf.ru16()
+            atom["data"]["pre-defined3"] = self.buf.rh(2)
+
+            self.read_more(atom)
         elif typ in (
             "samr",
             "sawb",
@@ -1143,6 +1168,7 @@ class IsoModule(module.RuminantModule):
             "dtse",
             "enca",
             "fLaC",
+            "Opus",
         ):
             # see https://github.com/sannies/mp4parser for reference
             atom["data"]["reserved1"] = self.buf.rh(6)
@@ -1169,15 +1195,6 @@ class IsoModule(module.RuminantModule):
 
             if typ != "owma":
                 self.read_more(atom)
-        elif typ[0] == "©" or typ in ("iods", "SDLN", "smrd"):
-            if typ[:2] == "©T" and self.buf.pu16() == self.buf.unit - 4:
-                length = self.buf.ru16()
-                self.buf.skip(2)
-                atom["data"]["payload"] = self.buf.rs(length)
-            else:
-                atom["data"]["payload"] = self.buf.readunit().decode("latin-1")
-        elif typ in ("hint", "cdsc", "font", "hind", "vdep", "vplx", "subt", "cdep"):
-            atom["data"]["track-id"] = self.buf.ru32()
         elif typ in ("lpcm", "beam"):
             # TODO
             pass
