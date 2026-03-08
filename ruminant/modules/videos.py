@@ -1161,7 +1161,7 @@ class IsoModule(module.RuminantModule):
         elif typ in ("hint", "cdsc", "font", "hind", "vdep", "vplx", "subt", "cdep"):
             atom["data"]["track-id"] = self.buf.ru32()
         # video sample boxes
-        elif typ in ("avc1", "hvc1", "vp09", "encv", "av01", "hev1"):
+        elif typ in ("avc1", "hvc1", "vp09", "encv", "av01", "hev1", "vvc1"):
             atom["data"]["reserved1"] = self.buf.rh(6)
             atom["data"]["data_reference_index"] = self.buf.ru16()
             atom["data"]["pre-defined1"] = self.buf.rh(2)
@@ -1186,7 +1186,6 @@ class IsoModule(module.RuminantModule):
             "sawb",
             "mp4a",
             "drms",
-            "alac",
             "owma",
             "ac-3",
             "ec-3",
@@ -2748,5 +2747,39 @@ class SwfModule(module.RuminantModule):
         meta["frame-count"] = self.buf.ru16l()
 
         meta["tags"] = self.read_tags()
+
+        return meta
+
+
+@module.register
+class DuckIvfModule(module.RuminantModule):
+    desc = "Duck IVF video files."
+
+    def identify(buf, ctx):
+        return buf.peek(4) == b"DKIF"
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "duck-ivf"
+
+        self.buf.skip(4)
+        meta["version"] = self.buf.ru16l()
+        meta["header-length"] = self.buf.ru16l()
+
+        self.buf.pasunit(meta["header-length"] - 8)
+
+        meta["format"] = self.buf.rs(4)
+        meta["width"] = self.buf.ru16l()
+        meta["height"] = self.buf.ru16l()
+        d = self.buf.ru32l()
+        n = self.buf.ru32l()
+        meta["time-base"] = {"value": n / d, "denominator": d, "numerator": n}
+        meta["frame-count"] = self.buf.ru32l()
+        meta["unused"] = self.buf.ru32l()
+
+        self.buf.sapunit()
+
+        for i in range(0, meta["frame-count"]):
+            self.buf.skip(self.buf.ru32l() + 8)
 
         return meta

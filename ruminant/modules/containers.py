@@ -703,6 +703,7 @@ class RIFFModule(module.RuminantModule):
                             "name": {
                                 0x0001: "PCM",
                                 0x0050: "MPEG",
+                                0x0055: "MP3",
                                 0x2000: "AC-3",
                                 0x00ff: "AAC",
                                 0x0161: "WMA",

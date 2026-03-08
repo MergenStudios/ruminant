@@ -110,6 +110,7 @@ Ruminant is still in early alpha but it can already process the following file t
 * Safetensors files
 * Microsoft cabinet files
 * btrfs stream files
+* Duck IVF video files
 
 # How do I install it?
 Run `pip3 install ruminant`.
