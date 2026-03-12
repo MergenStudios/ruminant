@@ -810,11 +810,12 @@ class SafeTensorsModule(module.RuminantModule):
         max_offset = 0
         meta["sections"] = {}
         for k, v in meta["header"].items():
-            self.buf.seek(v["data_offsets"][0] + base)
-            with self.buf.sub(v["data_offsets"][1] - v["data_offsets"][0]):
-                meta["sections"][k] = chew(self.buf, blob_mode=True)
+            if "data_offsets" in v:
+                self.buf.seek(v["data_offsets"][0] + base)
+                with self.buf.sub(v["data_offsets"][1] - v["data_offsets"][0]):
+                    meta["sections"][k] = chew(self.buf, blob_mode=True)
 
-            max_offset = max(max_offset, v["data_offsets"][1])
+                max_offset = max(max_offset, v["data_offsets"][1])
 
         self.buf.seek(max_offset + base)
 

@@ -1513,6 +1513,7 @@ class MatroskaModule(module.RuminantModule):
         0x23314f: ("TrackTimestampScale", "float"),
         0xaa: ("CodecDecodeAll", "uint"),
         0x447b: ("TagLanguageBCP47", "ascii"),
+        0x53b8: ("VideoStereoMode", "uint"),
     }
 
     def identify(buf, ctx):
