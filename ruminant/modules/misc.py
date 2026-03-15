@@ -837,36 +837,39 @@ class GgufModule(module.RuminantModule):
             case 1:
                 return "int8", self.buf.ri8()
             case 2:
-                return "uint16", self.buf.ru16l()
+                return "uint16", self.buf.ru16l() if self.little else self.buf.ru16()
             case 3:
-                return "int16", self.buf.ri16l()
+                return "int16", self.buf.ri16l() if self.little else self.buf.ri16()
             case 4:
-                return "uint32", self.buf.ru32l()
+                return "uint32", self.buf.ru32l() if self.little else self.buf.ru32()
             case 5:
-                return "int32", self.buf.ri32l()
+                return "int32", self.buf.ri32l() if self.little else self.buf.ri32()
             case 6:
                 return "float32", self.buf.rf32()
             case 7:
                 return "bool", bool(self.buf.ru8())
             case 8:
-                return "string", self.buf.rs(self.buf.ru64l())
+                return "string", self.rs()
             case 9:
-                typ = self.buf.ru32l()
+                typ = self.buf.ru32l() if self.little else self.buf.ru32()
                 vals = []
                 name = None
-                for i in range(0, self.buf.ru64l()):
+                for i in range(0, self.buf.ru64l() if self.little else self.buf.ru64()):
                     name, val = self.read_value(typ)
                     vals.append(val)
 
-                return "array/" + name, vals
+                return "[" + name + "]", vals
             case 10:
-                return "uint64", self.buf.ru64l()
+                return "uint64", self.buf.ru64l() if self.little else self.buf.ru64()
             case 11:
-                return "int64", self.buf.ri64l()
+                return "int64", self.buf.ri64l() if self.little else self.buf.ri64()
             case 12:
                 return "float64", self.buf.rf64()
             case _:
                 raise ValueError(f"Unknown value type {typ}")
+
+    def rs(self):
+        return self.buf.rs(self.buf.ru64l() if self.little else self.buf.ru64())
 
     def chew(self):
         meta = {}
@@ -874,16 +877,25 @@ class GgufModule(module.RuminantModule):
 
         meta["header"] = {}
         self.buf.skip(4)
-        meta["header"]["version"] = self.buf.ru32l()
-        meta["header"]["tensor-count"] = self.buf.ru64l()
-        meta["header"]["metadata-count"] = self.buf.ru64l()
+        self.little = bool(self.buf.pu32l() & 0xffff)
+        meta["header"]["version"] = self.buf.ru32l() if self.little else self.buf.ru32()
+        meta["header"]["tensor-count"] = (
+            self.buf.ru64l() if self.little else self.buf.ru64()
+        )
+        meta["header"]["metadata-count"] = (
+            self.buf.ru64l() if self.little else self.buf.ru64()
+        )
 
+        alignment = 32
         meta["metadata"] = []
         for i in range(0, meta["header"]["metadata-count"]):
             entry = {}
-            entry["key"] = self.buf.rs(self.buf.ru64l())
-            typ = self.buf.ru32l()
+            entry["key"] = self.rs()
+            typ = self.buf.ru32l() if self.little else self.buf.ru32()
             entry["type"], entry["value"] = self.read_value(typ)
+
+            if entry["key"] == "general.alignment":
+                alignment = entry["value"]
 
             meta["metadata"].append(entry)
 
@@ -891,16 +903,66 @@ class GgufModule(module.RuminantModule):
         max_offset = 0
         for i in range(0, meta["header"]["tensor-count"]):
             tensor = {}
-            tensor["name"] = self.buf.rs(self.buf.ru64l())
-            tensor["dimension-count"] = self.buf.ru32l()
+            tensor["name"] = self.rs()
+            tensor["dimension-count"] = (
+                self.buf.ru32l() if self.little else self.buf.ru32()
+            )
             tensor["dimensions"] = [
-                self.buf.ru64l() for j in range(0, tensor["dimension-count"])
+                (self.buf.ru64l() if self.little else self.buf.ru64())
+                for j in range(0, tensor["dimension-count"])
             ]
-            tensor["type"] = utils.unraw(self.buf.ru32l(), 4, {}, True)
+            tensor["type"] = utils.unraw(
+                self.buf.ru32l() if self.little else self.buf.ru32(),
+                4,
+                {
+                    0: "F32",
+                    1: "F16",
+                    2: "Q4_0",
+                    3: "Q4_1",
+                    4: "Q4_2",
+                    5: "Q4_3",
+                    6: "Q5_0",
+                    7: "Q5_1",
+                    8: "Q8_0",
+                    9: "Q8_1",
+                    10: "Q2_K",
+                    11: "Q3_K",
+                    12: "Q4_K",
+                    13: "Q5_K",
+                    14: "Q6_K",
+                    15: "Q8_K",
+                    16: "IQ2_XXS",
+                    17: "IQ2_XS",
+                    18: "IQ3_XXS",
+                    19: "IQ1_S",
+                    20: "IQ4_NL",
+                    21: "IQ3_S",
+                    22: "IQ2_S",
+                    23: "IQ4_XS",
+                    24: "I8",
+                    25: "I16",
+                    26: "I32",
+                    27: "I64",
+                    28: "F64",
+                    29: "IQ1_M",
+                    30: "BF16",
+                    31: "Q4_0_4_4",
+                    32: "Q4_0_4_8",
+                    33: "Q4_0_8_8",
+                    34: "TQ1_0",
+                    35: "TQ2_0",
+                    36: "IQ4_NL_4_4",
+                    37: "IQ4_NL_4_8",
+                    38: "IQ4_NL_8_8",
+                    39: "MXFP4",
+                },
+                True,
+            )
             tensor["offset"] = self.buf.ru64l()
 
             meta["tensors"].append(tensor)
 
+        self.buf.seek((self.buf.tell() + alignment - 1) % alignment)
         self.buf.seek(self.buf.tell() + max_offset)
 
         return meta
