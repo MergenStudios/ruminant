@@ -1,4 +1,4 @@
-Ruminant is a recursive metadata extraction tool.
+Ruminant is a recursive metadata extraction and file dissection tool.
 
 # What does it do?
 Ruminant takes a file as an input and spits out a huge json object that contains all the metadata it extracted from the file. This is done recursively, e.g. by running ruminant again on each file inside a zip file.
@@ -15,11 +15,12 @@ Ruminant is still in early alpha but it can already process the following file t
   * Java jmod modules
   * encrypted files
 * PDF files
+  * I hate Adobe
 * JPEG files
   * EXIF metadata
   * XMP metadata
   * ICC profiles
-  * IPTC metadata (I hate you for that one Adobe)
+  * IPTC metadata
   * Adobe-specific metadata in APP14
   * MPF APP2 segments
 * PNG files
@@ -86,6 +87,7 @@ Ruminant is still in early alpha but it can already process the following file t
   * .comment sections
   * .interp sections
   * .note sections
+  * some PS3/PS4 SELF stuff
 * PE files
   * Authenticode signatures
   * GRUB modules in EFI files
