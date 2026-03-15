@@ -820,3 +820,87 @@ class SafeTensorsModule(module.RuminantModule):
         self.buf.seek(max_offset + base)
 
         return meta
+
+
+@module.register
+class GgufModule(module.RuminantModule):
+    dev = True
+    desc = "GGUF model files."
+
+    def identify(buf, ctx):
+        return buf.peek(4) == b"GGUF"
+
+    def read_value(self, typ):
+        match typ:
+            case 0:
+                return "uint8", self.buf.ru8()
+            case 1:
+                return "int8", self.buf.ri8()
+            case 2:
+                return "uint16", self.buf.ru16l()
+            case 3:
+                return "int16", self.buf.ri16l()
+            case 4:
+                return "uint32", self.buf.ru32l()
+            case 5:
+                return "int32", self.buf.ri32l()
+            case 6:
+                return "float32", self.buf.rf32()
+            case 7:
+                return "bool", bool(self.buf.ru8())
+            case 8:
+                return "string", self.buf.rs(self.buf.ru64l())
+            case 9:
+                typ = self.buf.ru32l()
+                vals = []
+                name = None
+                for i in range(0, self.buf.ru64l()):
+                    name, val = self.read_value(typ)
+                    vals.append(val)
+
+                return "array/" + name, vals
+            case 10:
+                return "uint64", self.buf.ru64l()
+            case 11:
+                return "int64", self.buf.ri64l()
+            case 12:
+                return "float64", self.buf.rf64()
+            case _:
+                raise ValueError(f"Unknown value type {typ}")
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "GGUF"
+
+        meta["header"] = {}
+        self.buf.skip(4)
+        meta["header"]["version"] = self.buf.ru32l()
+        meta["header"]["tensor-count"] = self.buf.ru64l()
+        meta["header"]["metadata-count"] = self.buf.ru64l()
+
+        meta["metadata"] = []
+        for i in range(0, meta["header"]["metadata-count"]):
+            entry = {}
+            entry["key"] = self.buf.rs(self.buf.ru64l())
+            typ = self.buf.ru32l()
+            entry["type"], entry["value"] = self.read_value(typ)
+
+            meta["metadata"].append(entry)
+
+        meta["tensors"] = []
+        max_offset = 0
+        for i in range(0, meta["header"]["tensor-count"]):
+            tensor = {}
+            tensor["name"] = self.buf.rs(self.buf.ru64l())
+            tensor["dimension-count"] = self.buf.ru32l()
+            tensor["dimensions"] = [
+                self.buf.ru64l() for j in range(0, tensor["dimension-count"])
+            ]
+            tensor["type"] = utils.unraw(self.buf.ru32l(), 4, {}, True)
+            tensor["offset"] = self.buf.ru64l()
+
+            meta["tensors"].append(tensor)
+
+        self.buf.seek(self.buf.tell() + max_offset)
+
+        return meta

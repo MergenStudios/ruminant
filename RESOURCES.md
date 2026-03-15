@@ -120,3 +120,6 @@ This is a list of useful resources.
 # SWF
 * https://www.m2osw.com/swf_tags
 * https://open-flash.github.io/mirrors/swf-spec-19.pdf
+
+# GGUF
+* https://huggingface.co/docs/hub/gguf
