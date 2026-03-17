@@ -1,7 +1,6 @@
 from .. import module, utils, constants
 from ..buf import Buf
 from . import chew
-import datetime
 import time
 import zlib
 import hashlib
@@ -1865,9 +1864,7 @@ class PeModule(module.RuminantModule):
             },
         )
         meta["pe-header"]["section-count"] = self.buf.ru16l()
-        meta["pe-header"]["timestamp"] = datetime.datetime.fromtimestamp(
-            self.buf.ru32l(), datetime.timezone.utc
-        ).isoformat()
+        meta["pe-header"]["timestamp"] = utils.unix_to_date(self.buf.ru32l())
         meta["pe-header"]["symbol-table-offset"] = self.buf.ru32l()
         meta["pe-header"]["symbol-count"] = self.buf.ru32l()
         meta["pe-header"]["optional-header-size"] = self.buf.ru16l()
@@ -2230,6 +2227,126 @@ class PeModule(module.RuminantModule):
                             rva["parsed"]["entries"].append(entry)
 
                         self.buf.sapunit()
+                    case "Export Table":
+                        self.seek_vaddr(rva["base"])
+                        self.buf.setunit(min(self.buf.unit, rva["size"]))
+
+                        rva["parsed"] = {}
+                        rva["parsed"]["characteristics"] = utils.unpack_flags(
+                            self.buf.ru32l(), ()
+                        )
+                        rva["parsed"]["timestamp"] = utils.unix_to_date(
+                            self.buf.ru32l()
+                        )
+                        rva["parsed"]["major-version"] = self.buf.ru16l()
+                        rva["parsed"]["minor-version"] = self.buf.ru16l()
+                        with self.buf:
+                            self.seek_vaddr(self.buf.ru32l())
+                            rva["parsed"]["name"] = self.buf.rzs()
+                        self.buf.skip(4)
+                        rva["parsed"]["base"] = self.buf.ru32l()
+                        rva["parsed"]["function-count"] = self.buf.ru32l()
+                        rva["parsed"]["name-count"] = self.buf.ru32l()
+
+                        with self.buf:
+                            self.seek_vaddr(self.buf.ru32l())
+                            rva["parsed"]["functions"] = [
+                                self.hex(self.buf.ru32l())
+                                for i in range(0, rva["parsed"]["function-count"])
+                            ]
+                        self.buf.skip(4)
+
+                        with self.buf:
+                            self.seek_vaddr(self.buf.ru32l())
+
+                            rva["parsed"]["names"] = []
+                            for i in range(0, rva["parsed"]["name-count"]):
+                                with self.buf:
+                                    self.seek_vaddr(self.buf.ru32l())
+                                    rva["parsed"]["names"].append(self.buf.rzs())
+                                self.buf.skip(4)
+
+                        with self.buf:
+                            self.seek_vaddr(self.buf.ru32l())
+                            rva["parsed"]["ordinals"] = [
+                                self.buf.ru16l()
+                                for i in range(0, rva["parsed"]["name-count"])
+                            ]
+                    case "Import Table":
+                        self.seek_vaddr(rva["base"])
+                        self.buf.setunit(min(self.buf.unit, rva["size"]))
+
+                        rva["parsed"] = {}
+                        rva["parsed"]["entries"] = []
+
+                        while self.buf.unit >= 20 and sum(self.buf.peek(20)) > 0:
+                            entry = {}
+
+                            entry["original-thunks"] = []
+                            addr = self.buf.ru32l()
+                            with self.buf:
+                                self.seek_vaddr(addr)
+                                while True:
+                                    val = (
+                                        self.buf.ru64l()
+                                        if self.plus
+                                        else self.buf.ru32l()
+                                    )
+
+                                    if val == 0:
+                                        break
+
+                                    if val >> (63 if self.plus else 31):
+                                        entry["original-thunks"].append({
+                                            "type": "ordinal",
+                                            "ordinal": val & 0xffff,
+                                        })
+                                    else:
+                                        with self.buf:
+                                            self.seek_vaddr(val)
+                                            entry["original-thunks"].append({
+                                                "type": "name",
+                                                "hint": self.buf.ru16l(),
+                                                "name": self.buf.rzs(),
+                                            })
+
+                            entry["timestamp"] = utils.unix_to_date(self.buf.ru32l())
+                            entry["forwarder-chain"] = self.hex(self.buf.ru32l())
+
+                            addr = self.buf.ru32l()
+                            with self.buf:
+                                self.seek_vaddr(addr)
+                                entry["name"] = self.buf.rzs()
+
+                            entry["thunks"] = []
+                            addr = self.buf.ru32l()
+                            with self.buf:
+                                self.seek_vaddr(addr)
+                                while True:
+                                    val = (
+                                        self.buf.ru64l()
+                                        if self.plus
+                                        else self.buf.ru32l()
+                                    )
+
+                                    if val == 0:
+                                        break
+
+                                    if val >> (63 if self.plus else 31):
+                                        entry["thunks"].append({
+                                            "type": "ordinal",
+                                            "ordinal": val & 0xffff,
+                                        })
+                                    else:
+                                        with self.buf:
+                                            self.seek_vaddr(val)
+                                            entry["thunks"].append({
+                                                "type": "name",
+                                                "hint": self.buf.ru16l(),
+                                                "name": self.buf.rzs(),
+                                            })
+
+                            rva["parsed"]["entries"].append(entry)
 
         m = self.buf.tell()
         for section in meta["sections"]:
