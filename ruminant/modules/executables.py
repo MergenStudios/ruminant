@@ -2347,6 +2347,29 @@ class PeModule(module.RuminantModule):
                                             })
 
                             rva["parsed"]["entries"].append(entry)
+                    case "TLS Table":
+                        self.seek_vaddr(rva["base"])
+                        self.buf.setunit(min(self.buf.unit, rva["size"]))
+
+                        rva["parsed"] = {}
+                        rva["parsed"]["init-data-start"] = self.hex(
+                            self.buf.ru64l() if self.plus else self.buf.ru32l()
+                        )
+                        rva["parsed"]["init-data-end"] = self.hex(
+                            self.buf.ru64l() if self.plus else self.buf.ru32l()
+                        )
+                        rva["parsed"]["index-address"] = self.hex(
+                            self.buf.ru64l() if self.plus else self.buf.ru32l()
+                        )
+                        rva["parsed"]["callbacks"] = self.hex(
+                            self.buf.ru64l() if self.plus else self.buf.ru32l()
+                        )
+                        rva["parsed"]["zero-fill"] = self.buf.ru32l()
+                        temp = self.buf.ru32l()
+                        rva["parsed"]["characteristics"] = {
+                            "alignment": 2 ** (temp >> 20),
+                            "rest": temp & (2**20 - 1),
+                        }
 
         m = self.buf.tell()
         for section in meta["sections"]:
