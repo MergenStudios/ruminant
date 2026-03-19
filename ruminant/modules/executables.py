@@ -1813,9 +1813,11 @@ class PeModule(module.RuminantModule):
         raise ValueError(f"Cannot find section that maps {self.hex(vaddr)['hex']}")
 
     def read_resource(self):
+        pos = self.buf.tell()
+
         rsrc = {}
         rsrc["length"] = self.buf.ru16l()
-        self.buf.pasunit(rsrc["length"])
+        self.buf.pasunit(((rsrc["length"] + 3) // 4) * 4 - 2)
         rsrc["value-length"] = self.buf.ru16l()
         rsrc["type"] = self.buf.ru16l()
         rsrc["key"] = self.buf.rwzs()
@@ -1910,7 +1912,7 @@ class PeModule(module.RuminantModule):
                 )
 
                 child = True
-            case "VarFileInfo":
+            case "VarFileInfo" | "StringFileInfo":
                 rsrc["type"] = utils.unraw(
                     rsrc["type"], 2, {0x0000: "binary", 0x0001: "text"}, True
                 )
@@ -1927,11 +1929,39 @@ class PeModule(module.RuminantModule):
                     )
 
                     rsrc["value"]["languages"].append(lang)
-            case _:
-                rsrc["unknown"] = True
+            case (
+                "Comments"
+                | "CompanyName"
+                | "FileDescription"
+                | "FileVersion"
+                | "InternalName"
+                | "LegalCopyright"
+                | "LegalTrademarks"
+                | "OriginalFilename"
+                | "PrivateBuild"
+                | "ProductName"
+                | "ProductVersion"
+                | "SpecialBuild"
+                | "Assembly Version"
+            ):
+                # what is the value length even for in this case???
+                self.buf.pushunit()
+                self.buf.setunit(rsrc["length"] - (self.buf.tell() - pos))
 
-                with self.buf.subunit():
-                    rsrc["value"] = chew(self.buf, blob_mode=True)
+                rsrc["value"]["string"] = self.buf.rwzs()
+
+                self.buf.popunit()
+            case _:
+                if (
+                    len(rsrc["key"]) == 8
+                    and sum([c in "0123456789abcdef" for c in rsrc["key"]]) == 8
+                ):
+                    child = True
+                else:
+                    rsrc["unknown"] = True
+
+                    with self.buf.subunit():
+                        rsrc["value"] = chew(self.buf, blob_mode=True)
 
         if child:
             self.buf.sapunit()
@@ -1943,10 +1973,6 @@ class PeModule(module.RuminantModule):
 
             rsrc["value"]["children"] = []
             while self.buf.unit > 0:
-                if self.buf.pu16() == 0:
-                    self.buf.skip(2)
-                    break
-
                 rsrc["value"]["children"].append(self.read_resource())
 
         self.buf.sapunit()
