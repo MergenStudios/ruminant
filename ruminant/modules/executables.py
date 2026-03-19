@@ -1812,6 +1812,229 @@ class PeModule(module.RuminantModule):
 
         raise ValueError(f"Cannot find section that maps {self.hex(vaddr)['hex']}")
 
+    def read_resource(self):
+        rsrc = {}
+        rsrc["length"] = self.buf.ru16l()
+        self.buf.pasunit(rsrc["length"])
+        rsrc["value-length"] = self.buf.ru16l()
+        rsrc["type"] = self.buf.ru16l()
+        rsrc["key"] = self.buf.rwzs()
+        rsrc["padding"] = self.buf.rh(
+            (4 - self.buf.tell() % 4) if (self.buf.tell() % 4) else 0
+        )
+        rsrc["value"] = {}
+
+        child = False
+        self.buf.pasunit(rsrc["value-length"])
+        match rsrc["key"]:
+            case "VS_VERSION_INFO":
+                rsrc["value"]["signature"] = hex(self.buf.ru32l())
+                temp = self.buf.ru32l()
+                rsrc["value"]["version"] = f"{temp >> 16}.{temp & 0xffff}"
+                temp = self.buf.ru32l()
+                rsrc["value"]["binary-version"] = (temp << 32) | self.buf.ru32l()
+                temp = self.buf.ru32l()
+                rsrc["value"]["product-version"] = (temp << 32) | self.buf.ru32l()
+                rsrc["value"]["file-flags-mask"] = self.buf.ru32l()
+                rsrc["value"]["file-flags"] = utils.unpack_flags(
+                    self.buf.ru32l(),
+                    (
+                        (0, "DEBUG"),
+                        (1, "PRERELEASE"),
+                        (2, "PATCHED"),
+                        (3, "PRIVATEBUILD"),
+                        (4, "INFOINFERRED"),
+                        (8, "SPECIALBUILD"),
+                    ),
+                )
+                rsrc["value"]["file-os"] = utils.unraw(
+                    self.buf.ru32l(),
+                    4,
+                    {
+                        0x00000000: "UNKNOWN",
+                        0x00000001: "WINDOWS16",
+                        0x00000002: "PM16",
+                        0x00000003: "PM32",
+                        0x00000004: "WINDOWS32",
+                        0x00010000: "DOS",
+                        0x00020000: "OS216",
+                        0x00030000: "OS232",
+                        0x00040000: "NT",
+                    },
+                    True,
+                )
+                rsrc["value"]["file-type"] = utils.unraw(
+                    self.buf.ru32l(),
+                    4,
+                    {
+                        0x00000000: "UNKNOWN",
+                        0x00000001: "APP",
+                        0x00000002: "DLL",
+                        0x00000003: "DRV",
+                        0x00000004: "FONT",
+                        0x00000005: "VXD",
+                        0x00000007: "STATIC_LIB",
+                    },
+                    True,
+                )
+                rsrc["value"]["file-subtype"] = utils.unraw(
+                    self.buf.ru32l(),
+                    4,
+                    {
+                        "DRV": {
+                            0x00000000: "UNKNOWN",
+                            0x0000000a: "COMM",
+                            0x00000004: "DISPLAY",
+                            0x00000008: "INSTALLABLE",
+                            0x00000002: "KEYBOARD",
+                            0x00000003: "LANGUAGE",
+                            0x00000005: "MOUSE",
+                            0x00000006: "NETWORK",
+                            0x00000001: "PRINTER",
+                            0x00000009: "SOUND",
+                            0x00000007: "SYSTEM",
+                            0x0000000c: "VERSIONED_PRINTER",
+                        },
+                        "FONT": {
+                            0x00000000: "UNKNOWN",
+                            0x00000001: "RASTER",
+                            0x00000002: "VECTOR",
+                            0x00000003: "TRUETYPE",
+                        },
+                    }.get(rsrc["value"]["file-type"], {0x00000000: "UNKNOWN"}),
+                    True,
+                )
+                temp = self.buf.ru32l()
+                rsrc["value"]["timestamp"] = utils.filetime_to_date(
+                    (temp << 32) | self.buf.ru32l()
+                )
+
+                child = True
+            case "VarFileInfo":
+                rsrc["type"] = utils.unraw(
+                    rsrc["type"], 2, {0x0000: "binary", 0x0001: "text"}, True
+                )
+                child = True
+            case "Translation":
+                rsrc["value"]["languages"] = []
+                while self.buf.unit > 0:
+                    lang = {}
+                    lang["language"] = utils.unraw(
+                        self.buf.ru16l(), 2, constants.MICROSOFT_LCIDS, True
+                    )
+                    lang["ibm-codepage"] = utils.unraw(
+                        self.buf.ru16l(), 2, {1200: "UTF-16"}, True
+                    )
+
+                    rsrc["value"]["languages"].append(lang)
+            case _:
+                rsrc["unknown"] = True
+
+                with self.buf.subunit():
+                    rsrc["value"] = chew(self.buf, blob_mode=True)
+
+        if child:
+            self.buf.sapunit()
+            self.buf.pushunit()
+
+            rsrc["value"]["padding"] = self.buf.rh(
+                (4 - self.buf.tell() % 4) if (self.buf.tell() % 4) else 0
+            )
+
+            rsrc["value"]["children"] = []
+            while self.buf.unit > 0:
+                if self.buf.pu16() == 0:
+                    self.buf.skip(2)
+                    break
+
+                rsrc["value"]["children"].append(self.read_resource())
+
+        self.buf.sapunit()
+        self.buf.sapunit()
+
+        return rsrc
+
+    def read_resource_directory_table(self, path=None):
+        path = path if path else []
+
+        tbl = {}
+        tbl["characteristics"] = utils.unpack_flags(self.buf.ru32l(), ())
+        tbl["timestamp"] = utils.unix_to_date(self.buf.ru32l())
+        tbl["major-version"] = self.buf.ru16l()
+        tbl["minor-version"] = self.buf.ru16l()
+        tbl["name-count"] = self.buf.ru16l()
+        tbl["id-count"] = self.buf.ru16l()
+
+        tbl["entries"] = []
+
+        for i in range(0, tbl["name-count"] + tbl["id-count"]):
+            entry = {}
+
+            offset = self.buf.ru32l()
+
+            if i < tbl["name-count"]:
+                with self.buf:
+                    self.buf.seek(self.rsrc_offset + offset)
+                    entry["name"] = self.buf.read(self.buf.ru16l()).decode("utf-16le")
+            else:
+                if len(path) == 0:
+                    entry["id"] = utils.unraw(
+                        offset,
+                        4,
+                        {
+                            1: "CURSOR",
+                            2: "BITMAP",
+                            3: "ICON",
+                            4: "MENU",
+                            5: "DIALOG",
+                            6: "STRING",
+                            7: "FONTDIR",
+                            8: "FONT",
+                            9: "ACCELERATOR",
+                            10: "RCDATA",
+                            11: "MESSAGETABLE",
+                            12: "GROUP_CURSOR",
+                            14: "GROUP_ICON",
+                            16: "VERSION",
+                            17: "DLGINCLUDE",
+                            19: "PLUGPLAY",
+                            20: "VXD",
+                            21: "ANICURSOR",
+                            22: "ANIICON",
+                            23: "HTML",
+                            24: "MANIFEST",
+                        },
+                        True,
+                    )
+                else:
+                    entry["id"] = offset
+
+            offset = self.buf.ru32l()
+            if offset >> 31:
+                with self.buf:
+                    self.buf.seek(self.rsrc_offset + (offset & 0x7fffffff))
+                    entry["sub-directory"] = self.read_resource_directory_table(
+                        path + [entry.get("id", entry.get("name"))]
+                    )
+            else:
+                with self.buf:
+                    self.buf.seek(self.rsrc_offset + offset)
+
+                    entry["data-rva"] = self.buf.ru32l()
+                    entry["data-size"] = self.buf.ru32l()
+                    entry["data-codepage"] = self.buf.ru32l()
+                    entry["data-reserved"] = self.buf.ru32l()
+
+                    self.seek_vaddr(entry["data-rva"])
+                    with self.buf.sub(entry["data-size"]):
+                        match path:
+                            case ("VERSION", 1):
+                                entry["data"] = self.read_resource()
+
+            tbl["entries"].append(entry)
+
+        return tbl
+
     def chew(self):
         meta = {}
         meta["type"] = "pe"
@@ -2370,6 +2593,14 @@ class PeModule(module.RuminantModule):
                             "alignment": 2 ** (temp >> 20),
                             "rest": temp & (2**20 - 1),
                         }
+                    case "Resource Table":
+                        self.seek_vaddr(rva["base"])
+                        self.buf.resetunit()
+
+                        self.rsrc_offset = self.buf.tell()
+
+                        rva["parsed"] = {}
+                        rva["parsed"]["root"] = self.read_resource_directory_table()
 
         m = self.buf.tell()
         for section in meta["sections"]:

@@ -445,6 +445,15 @@ class Buf(object):
 
         return _decode(s, encoding)
 
+    def rwzs(self):
+        s = b""
+        while self.pu16():
+            s += self.read(2)
+
+        self.skip(2)
+
+        return s.decode("utf-16le")
+
     def pzs(self, encoding="utf-8"):
         pos = self.tell()
 
@@ -455,6 +464,17 @@ class Buf(object):
         self.seek(pos)
 
         return _decode(s, encoding)
+
+    def pwzs(self):
+        pos = self.tell()
+
+        s = b""
+        while self.pu16():
+            s += self._file.read(2)
+
+        self.seek(pos)
+
+        return s.decode("utf-16le")
 
     def ruuid(self):
         return str(uuid.UUID(bytes=self.read(16)))

@@ -1,3 +1,5 @@
+RUMINANT_VERSION = "0.0.31"
+
 MICROSOFT_LCIDS = {
     0: "None",
     1: "ar",
@@ -7801,8 +7803,6 @@ PE_MSDOS_STUBS = {
 }
 
 ZIP_COMPRESSION_ALGORITHMS = {0x0000: "Uncompressed", 0x0008: "Deflate", 0x0063: "AES"}
-
-RUMINANT_VERSION = "0.0.31"
 
 CRC32C_TABLE = [
     0x00000000,
