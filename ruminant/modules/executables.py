@@ -1954,7 +1954,7 @@ class PeModule(module.RuminantModule):
             case _:
                 if (
                     len(rsrc["key"]) == 8
-                    and sum([c in "0123456789abcdef" for c in rsrc["key"]]) == 8
+                    and sum([c in "0123456789abcdefABCDEF" for c in rsrc["key"]]) == 8
                 ):
                     child = True
                 else:
@@ -1999,9 +1999,14 @@ class PeModule(module.RuminantModule):
             offset = self.buf.ru32l()
 
             if i < tbl["name-count"]:
-                with self.buf:
-                    self.buf.seek(self.rsrc_offset + offset)
-                    entry["name"] = self.buf.read(self.buf.ru16l()).decode("utf-16le")
+                try:
+                    with self.buf:
+                        self.buf.seek(self.rsrc_offset + offset)
+                        entry["name"] = self.buf.read(self.buf.ru16l()).decode(
+                            "utf-16le"
+                        )
+                except Exception:
+                    entry["offset"] = self.hex(offset)
             else:
                 if len(path) == 0:
                     entry["id"] = utils.unraw(
@@ -2056,6 +2061,8 @@ class PeModule(module.RuminantModule):
                         match path:
                             case ("VERSION", 1):
                                 entry["data"] = self.read_resource()
+                            case _:
+                                entry["data"] = chew(self.buf)
 
             tbl["entries"].append(entry)
 
@@ -2587,12 +2594,18 @@ class PeModule(module.RuminantModule):
                                             "ordinal": val & 0xffff,
                                         })
                                     else:
-                                        with self.buf:
-                                            self.seek_vaddr(val)
+                                        try:
+                                            with self.buf:
+                                                self.seek_vaddr(val)
+                                                entry["thunks"].append({
+                                                    "type": "name",
+                                                    "hint": self.buf.ru16l(),
+                                                    "name": self.buf.rzs(),
+                                                })
+                                        except ValueError:
                                             entry["thunks"].append({
-                                                "type": "name",
-                                                "hint": self.buf.ru16l(),
-                                                "name": self.buf.rzs(),
+                                                "type": "broken-name",
+                                                "address": self.hex(val),
                                             })
 
                             rva["parsed"]["entries"].append(entry)
