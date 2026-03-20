@@ -966,3 +966,171 @@ class GgufModule(module.RuminantModule):
         self.buf.seek(self.buf.tell() + max_offset)
 
         return meta
+
+
+@module.register
+class AcpiModule(module.RuminantModule):
+    dev = True
+    desc = "ACPI tables like the ones in /sys/firmware/acpi/tables."
+
+    def identify(buf, ctx):
+        if buf.available() < 8:
+            return False
+
+        with buf:
+            header = buf.rs(4)
+
+            if header not in (
+                "APIC",
+                "BATB",
+                "BGRT",
+                "CDIT",
+                "CRAT",
+                "DSDT",
+                "ECDT",
+                "FACP",
+                "FACS",
+                "FPDT",
+                "HPET",
+                "IVRS",
+                "MCFG",
+                "POAT",
+                "SDEV",
+                "SSDT",
+                "TPM2",
+                "UEFI",
+                "VFCT",
+                "WSMT",
+            ):
+                return False
+
+            if buf.ru32l() > buf.available() + 8:
+                return False
+
+        return True
+
+    def read_pkglen(self):
+        first = self.buf.ru8()
+        length = first & 0x3f
+        s = 6
+
+        for i in range(first >> 6):
+            length |= self.buf.ru8() << s
+            s += 8
+
+        return length
+
+    def read_list(self):
+        terms = []
+        while self.buf.unit > 0:
+            term = self.read_aml_op()
+            terms.append(term)
+
+            if term["code"].startswith("Unknown"):
+                break
+
+        return terms
+
+    def read_namestring(self):
+        name = ""
+
+        if self.buf.pu8() == 0x5c:
+            name += "\\"
+            self.buf.skip(1)
+
+        while self.buf.pu8() == 0x5e:
+            name += "^"
+            self.buf.skip(1)
+
+        if self.buf.pu8() == 0x2e:
+            self.buf.skip(1)
+            name += self.buf.rs(8)
+        elif self.buf.pu8() == 0x2f:
+            self.buf.skip(1)
+            count = self.buf.ru8()
+            name += self.buf.rs(4 * count)
+        else:
+            name += self.buf.rs(4)
+
+        return name
+
+    def read_aml_op(self):
+        op = {}
+        code = self.buf.ru8()
+
+        match code:
+            case 0x00:
+                op["code"] = "ZeroOp"
+            case 0x15:
+                op["code"] = "ExternalOp"
+
+                op["name"] = self.read_namestring()
+                op["object-type"] = utils.unraw(
+                    self.buf.ru8(),
+                    1,
+                    {
+                        0x00: "Zero",
+                        0x01: "Device",
+                        0x02: "Event",
+                        0x03: "Mutex",
+                        0x04: "Method",
+                        0x05: "Processor",
+                        0x06: "Region",
+                        0x07: "PowerResource",
+                        0x08: "ByteData",
+                        0x09: "WordData",
+                        0x0a: "DWordData",
+                        0x0b: "StringData",
+                        0x0c: "BufferData",
+                        0x0d: "PackageData",
+                        0x0e: "QWordData",
+                        0x0f: "ThermalZone",
+                    },
+                    True,
+                )
+                op["argument-count"] = self.buf.ru8()
+            case 0xa0:
+                op["code"] = "IfOp"
+                op["length"] = self.read_pkglen()
+                self.buf.pasunit(op["length"])
+
+                op["arg"] = self.read_aml_op()
+                op["terms"] = self.read_list()
+
+                self.buf.sapunit()
+            case _:
+                op["code"] = f"Unknown (0x{hex(code)[2:].zfill(2)})"
+
+        return op
+
+    def read_aml(self):
+        tbl = {}
+        tbl["version"] = self.buf.ru8()
+        tbl["checksum"] = self.buf.ru8()
+        tbl["oem-id"] = self.buf.rs(6)
+        tbl["oem-table-id"] = self.buf.rs(8)
+        tbl["oem-revision"] = self.buf.ru32l()
+        tbl["creator"] = utils.unraw(
+            self.buf.ru32l(), 4, {0x43455450: "PTEC", 0x4c544e49: "INTL"}, True
+        )
+        tbl["creator-revision"] = self.buf.ru32l()
+        tbl["opcodes"] = self.read_list()
+
+        return tbl
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "acpi"
+
+        meta["table-name"] = self.buf.rs(4)
+        meta["length"] = self.buf.ru32l()
+        self.buf.pasunit(meta["length"] - 8)
+
+        match meta["table-name"]:
+            case "DSDT" | "SSDT" | "PSDT" | "OSDT":
+                meta["data"] = self.read_aml()
+            case _:
+                meta["unknown"] = True
+
+        self.buf.sapunit()
+        return meta

@@ -123,3 +123,6 @@ This is a list of useful resources.
 
 # GGUF
 * https://huggingface.co/docs/hub/gguf
+
+# ACPI
+* https://uefi.org/htmlspecs/ACPI_Spec_6_4_html/20_AML_Specification/AML_Specification.html
