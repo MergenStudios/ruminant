@@ -317,7 +317,7 @@ def main(dev=False):
             args.file = "/dev/stdin"
 
     # GUI mode
-    if args.gui:
+    if gui.has_gui and args.gui:
         # redirect stdout to capture and parse it later
         old_stdout = sys.stdout
         sys.stdout = io.StringIO()
@@ -402,7 +402,7 @@ def main(dev=False):
                 print("File not found.", file=sys.stderr)
                 exit(1)
 
-        if args.gui:
+        if gui.has_gui and args.gui:
             # swap stdout back
             data = sys.stdout.getvalue()
             sys.stdout = old_stdout
