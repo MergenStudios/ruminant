@@ -1054,13 +1054,126 @@ class AcpiModule(module.RuminantModule):
 
         return name
 
+    def read_field(self):
+        match self.buf.pu8():
+            case 0x00:
+                return {"type": "ReservedField", "length": self.read_pkglen()}
+            case 0x01:
+                return {
+                    "type": "AccessField",
+                    "access": utils.unraw(
+                        self.buf.rb(2),
+                        1,
+                        {
+                            0x00: "Normal",
+                            0x01: "Bytes",
+                            0x02: "RawBytes",
+                            0x03: "RawProcessBytes",
+                        },
+                        True,
+                    ),
+                    "reserved": self.buf.rb(2),
+                    "access-type": utils.unraw(
+                        self.buf.rb(4),
+                        1,
+                        {
+                            0x00: "Any",
+                            0x01: "Byte",
+                            0x02: "Word",
+                            0x03: "DWord",
+                            0x04: "QWord",
+                            0x05: "Buffer",
+                            0x06: "Reserved",
+                        },
+                        True,
+                    ),
+                    "access-attrib": utils.unraw(
+                        self.buf.ru8(),
+                        1,
+                        {
+                            0x02: "Quick",
+                            0x04: "SendReceive",
+                            0x06: "Byte",
+                            0x08: "Word",
+                            0x0a: "Block",
+                            0x0c: "ProcessCall",
+                            0x0d: "BlockProcessCall",
+                        },
+                        True,
+                    ),
+                }
+            case 0x02 | 0x03:
+                raise NotImplementedError()
+            case _:
+                return {
+                    "type": "NamedField",
+                    "name": self.buf.rs(4),
+                    "length": self.read_pkglen(),
+                }
+
     def read_aml_op(self):
         op = {}
         code = self.buf.ru8()
+        if code == 0x5b:
+            code = (code << 8) | self.buf.ru8()
 
         match code:
             case 0x00:
                 op["code"] = "ZeroOp"
+            case 0x01:
+                op["code"] = "OneOp"
+            case 0x08:
+                op["code"] = "NameOp"
+
+                op["name"] = self.read_namestring()
+                op["ref"] = self.read_aml_op()
+            case 0x0a:
+                op["code"] = "BytePrefix"
+
+                op["value"] = self.buf.ru8()
+            case 0x0b:
+                op["code"] = "WordPrefix"
+
+                op["value"] = self.buf.ru16l()
+            case 0x0c:
+                op["code"] = "DWordPrefix"
+
+                op["value"] = self.buf.ru32l()
+            case 0x10:
+                op["code"] = "ScopeOp"
+                op["length"] = self.read_pkglen()
+                self.buf.pasunit(op["length"] - 1)
+
+                op["name"] = self.read_namestring()
+                op["terms"] = self.read_list()
+
+                self.buf.sapunit()
+            case 0x11:
+                op["code"] = "BufferOp"
+                pos = self.buf.tell()
+                op["length"] = self.read_pkglen()
+
+                op["size"] = self.read_aml_op()
+                op["values"] = self.buf.rh(
+                    max(
+                        0,
+                        min(
+                            op["size"]["value"], op["length"] - (self.buf.tell() - pos)
+                        ),
+                    )
+                )
+            case 0x14:
+                op["code"] = "MethodOp"
+                op["length"] = self.read_pkglen()
+                self.buf.pasunit(op["length"] - 1)
+
+                op["name"] = self.read_namestring()
+                op["sync-level"] = self.buf.rb(4)
+                op["serialized"] = bool(self.buf.rb(1))
+                op["argument-count"] = self.buf.rb(3)
+                op["terms"] = self.read_list()
+
+                self.buf.sapunit()
             case 0x15:
                 op["code"] = "ExternalOp"
 
@@ -1089,13 +1202,95 @@ class AcpiModule(module.RuminantModule):
                     True,
                 )
                 op["argument-count"] = self.buf.ru8()
+            case 0x68:
+                op["code"] = "Arg0Op"
+            case 0x69:
+                op["code"] = "Arg1Op"
+            case 0x6a:
+                op["code"] = "Arg2Op"
+            case 0x6b:
+                op["code"] = "Arg3Op"
+            case 0x6c:
+                op["code"] = "Arg4Op"
+            case 0x6d:
+                op["code"] = "Arg5Op"
+            case 0x6e:
+                op["code"] = "Arg6Op"
+            case 0x93:
+                op["code"] = "LEqualOp"
+
+                op["left"] = self.read_aml_op()
+                op["right"] = self.read_aml_op()
             case 0xa0:
                 op["code"] = "IfOp"
                 op["length"] = self.read_pkglen()
-                self.buf.pasunit(op["length"])
+                self.buf.pasunit(op["length"] - 1)
 
                 op["arg"] = self.read_aml_op()
                 op["terms"] = self.read_list()
+
+                self.buf.sapunit()
+            case 0x5b01:
+                op["code"] = "MutexOp"
+
+                op["name"] = self.read_namestring()
+                op["reserved"] = self.buf.rb(4)
+                op["sync-level"] = self.buf.rb(4)
+            case 0x5b80:
+                op["code"] = "OpRegionOp"
+
+                op["name"] = self.read_namestring()
+                op["region"] = utils.unraw(
+                    self.buf.ru8(),
+                    1,
+                    {
+                        0x00: "SystemMemory",
+                        0x01: "SystemIO",
+                        0x02: "PCI_Config",
+                        0x03: "EmbeddedControl",
+                        0x04: "SMBus",
+                        0x05: "System CMOS",
+                        0x06: "PciBarTarget",
+                        0x07: "IPMI",
+                        0x08: "GeneralPurposeIO",
+                        0x09: "GenericSerialBus",
+                        0x0a: "PCC",
+                    },
+                    True,
+                )
+                op["offset"] = self.read_aml_op()
+                op["length"] = self.read_aml_op()
+            case 0x5b81:
+                op["code"] = "FieldOp"
+                op["length"] = self.read_pkglen()
+                self.buf.pasunit(op["length"] - 1)
+
+                op["name"] = self.read_namestring()
+                op["reserved"] = self.buf.rb(1)
+                op["update-rule"] = utils.unraw(
+                    self.buf.rb(2),
+                    1,
+                    {0x00: "Preserve", 0x01: "WriteAsOnes", 0x02: "WriteAsZeros"},
+                    True,
+                )
+                op["lock-rule"] = bool(self.buf.rb(1))
+                op["access-type"] = utils.unraw(
+                    self.buf.rb(4),
+                    1,
+                    {
+                        0x00: "Any",
+                        0x01: "Byte",
+                        0x02: "Word",
+                        0x03: "DWord",
+                        0x04: "QWord",
+                        0x05: "Buffer",
+                        0x06: "Reserved",
+                    },
+                    True,
+                )
+                op["fields"] = []
+                while self.buf.unit > 0:
+                    op["fields"].append(self.read_field())
 
                 self.buf.sapunit()
             case _:
@@ -1132,9 +1327,7 @@ class AcpiModule(module.RuminantModule):
         meta["oem-id"] = self.buf.rs(6)
         meta["oem-table-id"] = self.buf.rs(8)
         meta["oem-revision"] = self.buf.ru32l()
-        meta["creator"] = utils.unraw(
-            self.buf.ru32l(), 4, {0x43455450: "PTEC", 0x4c544e49: "INTL"}, True
-        )
+        meta["creator"] = self.buf.rs(4)
         meta["creator-revision"] = self.buf.ru32l()
 
         match meta["table-name"]:
