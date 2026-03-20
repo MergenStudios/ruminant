@@ -8062,3 +8062,5 @@ CRC32C_TABLE = [
     0x5f16d052,
     0xad7d5351,
 ]
+
+PCI_VENDORS = {0x4353: "Advanced Micro Devices"}

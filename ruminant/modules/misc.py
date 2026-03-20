@@ -1,4 +1,4 @@
-from .. import module, utils
+from .. import module, utils, constants
 from . import chew
 import tempfile
 import sqlite3
@@ -1105,15 +1105,6 @@ class AcpiModule(module.RuminantModule):
 
     def read_aml(self):
         tbl = {}
-        tbl["version"] = self.buf.ru8()
-        tbl["checksum"] = self.buf.ru8()
-        tbl["oem-id"] = self.buf.rs(6)
-        tbl["oem-table-id"] = self.buf.rs(8)
-        tbl["oem-revision"] = self.buf.ru32l()
-        tbl["creator"] = utils.unraw(
-            self.buf.ru32l(), 4, {0x43455450: "PTEC", 0x4c544e49: "INTL"}, True
-        )
-        tbl["creator-revision"] = self.buf.ru32l()
         tbl["opcodes"] = self.read_list()
 
         return tbl
@@ -1126,10 +1117,61 @@ class AcpiModule(module.RuminantModule):
         meta["length"] = self.buf.ru32l()
         self.buf.pasunit(meta["length"] - 8)
 
+        meta["version"] = self.buf.ru8()
+
+        csum = self.buf.ru8()
+        with self.buf:
+            self.buf.resetunit()
+            self.buf.seek(self.buf.tell() - 10)
+            actual_csum = (0x100 - (sum(self.buf.read(meta["length"]))) + csum) & 0xff
+            meta["checksum"] = {"value": csum, "correct": csum == actual_csum}
+
+            if not meta["checksum"]["correct"]:
+                meta["checksum"]["actual"] = actual_csum
+
+        meta["oem-id"] = self.buf.rs(6)
+        meta["oem-table-id"] = self.buf.rs(8)
+        meta["oem-revision"] = self.buf.ru32l()
+        meta["creator"] = utils.unraw(
+            self.buf.ru32l(), 4, {0x43455450: "PTEC", 0x4c544e49: "INTL"}, True
+        )
+        meta["creator-revision"] = self.buf.ru32l()
+
         match meta["table-name"]:
             case "DSDT" | "SSDT" | "PSDT" | "OSDT":
                 meta["data"] = self.read_aml()
+            case "UEFI":
+                meta["data"] = {}
+                meta["data"]["identifier"] = self.buf.rguid()
+                meta["data"]["data-offset"] = self.buf.ru16l()
+                self.buf.skip(meta["data"]["data-offset"] - 54)
+
+                with self.buf.subunit():
+                    meta["data"]["blob"] = chew(self.buf)
+            case "HPET":
+                meta["data"] = {}
+                meta["data"]["hardware-rev-id"] = self.buf.ru8()
+                meta["data"]["comparator-count"] = self.buf.rb(5)
+                meta["data"]["counter-size"] = self.buf.rb(1)
+                meta["data"]["reserved1"] = self.buf.rb(1)
+                meta["data"]["legacy-replacement"] = self.buf.rb(1)
+                meta["data"]["pci-vendor-id"] = utils.unraw(
+                    self.buf.ru16l(), 2, constants.PCI_VENDORS, True
+                )
+                meta["data"]["address-space"] = utils.unraw(
+                    self.buf.ru8(), 1, {0x00: "memory", 0x01: "I/O"}, True
+                )
+                meta["data"]["register-bit-width"] = self.buf.ru8()
+                meta["data"]["register-bit-offset"] = self.buf.ru8()
+                meta["data"]["reserved2"] = self.buf.ru8()
+                meta["data"]["address"] = "0x" + hex(self.buf.ru64l())[2:].zfill(16)
+                meta["data"]["hpet-number"] = self.buf.ru8()
+                meta["data"]["minimum-tick"] = self.buf.ru16l()
+                meta["data"]["page-protection"] = self.buf.ru8()
             case _:
+                meta["data"] = {}
+                with self.buf.subunit():
+                    meta["data"]["blob"] = chew(self.buf)
                 meta["unknown"] = True
 
         self.buf.sapunit()
