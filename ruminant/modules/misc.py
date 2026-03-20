@@ -1111,6 +1111,32 @@ class AcpiModule(module.RuminantModule):
                     "length": self.read_pkglen(),
                 }
 
+    def read_address(self):
+        addr = {}
+        addr["address-space"] = utils.unraw(
+            self.buf.ru8(),
+            1,
+            {
+                0x00: "SystemMemory",
+                0x01: "SystemIO",
+                0x02: "PCI_Config",
+                0x03: "EmbeddedControl",
+                0x04: "SMBus",
+                0x05: "System CMOS",
+                0x06: "PciBarTarget",
+                0x07: "IPMI",
+                0x08: "GeneralPurposeIO",
+                0x09: "GenericSerialBus",
+                0x0a: "PCC",
+            },
+            True,
+        )
+        addr["register-bit-width"] = self.buf.ru8()
+        addr["register-bit-offset"] = self.buf.ru8()
+        addr["reserved2"] = self.buf.ru8()
+        addr["address"] = "0x" + hex(self.buf.ru64l())[2:].zfill(16)
+        return addr
+
     def read_aml_op(self):
         op = {}
         code = self.buf.ru8()
@@ -1330,11 +1356,11 @@ class AcpiModule(module.RuminantModule):
         meta["creator"] = self.buf.rs(4)
         meta["creator-revision"] = self.buf.ru32l()
 
+        meta["data"] = {}
         match meta["table-name"]:
             case "DSDT" | "SSDT" | "PSDT" | "OSDT":
                 meta["data"] = self.read_aml()
             case "UEFI":
-                meta["data"] = {}
                 meta["data"]["identifier"] = self.buf.rguid()
                 meta["data"]["data-offset"] = self.buf.ru16l()
                 self.buf.skip(meta["data"]["data-offset"] - 54)
@@ -1342,7 +1368,6 @@ class AcpiModule(module.RuminantModule):
                 with self.buf.subunit():
                     meta["data"]["blob"] = chew(self.buf)
             case "HPET":
-                meta["data"] = {}
                 meta["data"]["hardware-rev-id"] = self.buf.ru8()
                 meta["data"]["comparator-count"] = self.buf.rb(5)
                 meta["data"]["counter-size"] = self.buf.rb(1)
@@ -1351,18 +1376,39 @@ class AcpiModule(module.RuminantModule):
                 meta["data"]["pci-vendor-id"] = utils.unraw(
                     self.buf.ru16l(), 2, constants.PCI_VENDORS, True
                 )
-                meta["data"]["address-space"] = utils.unraw(
-                    self.buf.ru8(), 1, {0x00: "memory", 0x01: "I/O"}, True
-                )
-                meta["data"]["register-bit-width"] = self.buf.ru8()
-                meta["data"]["register-bit-offset"] = self.buf.ru8()
-                meta["data"]["reserved2"] = self.buf.ru8()
-                meta["data"]["address"] = "0x" + hex(self.buf.ru64l())[2:].zfill(16)
+                meta["data"]["address"] = self.read_address()
                 meta["data"]["hpet-number"] = self.buf.ru8()
                 meta["data"]["minimum-tick"] = self.buf.ru16l()
                 meta["data"]["page-protection"] = self.buf.ru8()
+            case "BGRT":
+                meta["data"]["version"] = self.buf.ru16l()
+                meta["data"]["reserved"] = self.buf.rb(5)
+                meta["data"]["orientation-degrees"] = ["0", "90", "180", "270"][
+                    self.buf.rb(2)
+                ]
+                meta["data"]["displayed"] = bool(self.buf.rb(1))
+                meta["data"]["image-type"] = (
+                    utils.unraw(self.buf.ru8(), 1, {0x00: "Bitmap"}, True),
+                )
+                meta["data"]["address"] = ("0x" + hex(self.buf.ru64l())[2:].zfill(16),)
+                meta["data"]["x-offset"] = self.buf.ru32l()
+                meta["data"]["y-offset"] = self.buf.ru32l()
+            case "ECDT":
+                meta["data"]["control-port"] = self.read_address()
+                meta["data"]["data-port"] = self.read_address()
+                meta["data"]["uid"] = self.buf.ru32l()
+                meta["data"]["gpe"] = self.buf.ru8()
+                meta["data"]["id"] = self.buf.rzs()
+            case "WSMT":
+                meta["data"]["flags"] = utils.unpack_flags(
+                    self.buf.ru32l(),
+                    (
+                        (0, "FIXED_COMM_BUFFERS"),
+                        (1, "COMM_BUFFER_NESTED_PTR_PROTECTION"),
+                        (2, "SYSTEM_RESOURCE_PROTECTION"),
+                    ),
+                )
             case _:
-                meta["data"] = {}
                 with self.buf.subunit():
                     meta["data"]["blob"] = chew(self.buf)
                 meta["unknown"] = True
