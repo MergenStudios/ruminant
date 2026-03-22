@@ -1415,3 +1415,154 @@ class AcpiModule(module.RuminantModule):
 
         self.buf.sapunit()
         return meta
+
+
+@module.register
+class BplistModule(module.RuminantModule):
+    desc = "Apple binary property lists."
+
+    def identify(buf, ctx):
+        return buf.peek(8) == b"bplist00" and buf.available() >= 40
+
+    def read_size(self, op):
+        if op & 0x0f != 0x0f:
+            return op & 0x0f
+
+        return int.from_bytes(self.buf.read(2 ** (self.buf.ru8() & 0x0f)), "big")
+
+    def rebuild(self, obj, objs):
+        match obj["type"]:
+            case "dict":
+                value = {}
+                for entry in obj["value"]:
+                    value[self.rebuild(objs[entry["key"]], objs)] = self.rebuild(
+                        objs[entry["value"]], objs
+                    )
+
+                return value
+            case "array":
+                return [self.rebuild(objs[x], objs) for x in obj["value"]]
+            case _:
+                return obj.get("value")
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "bplist"
+
+        self.buf.seek(self.buf.available() - 32)
+        meta["trailer"] = {}
+        meta["trailer"]["reserved"] = self.buf.rh(5)
+        meta["trailer"]["sort-version"] = self.buf.ru8()
+        meta["trailer"]["offset-table-size"] = self.buf.ru8()
+        meta["trailer"]["object-reference-size"] = self.buf.ru8()
+        meta["trailer"]["object-count"] = self.buf.ru64()
+        meta["trailer"]["top-object-offset"] = self.buf.ru64()
+        meta["trailer"]["offset-table-offset"] = self.buf.ru64()
+
+        objects = []
+        for i in range(0, meta["trailer"]["object-count"]):
+            self.buf.seek(
+                meta["trailer"]["offset-table-offset"]
+                + meta["trailer"]["offset-table-size"] * i
+            )
+            self.buf.seek(
+                int.from_bytes(
+                    self.buf.read(meta["trailer"]["offset-table-size"]), "big"
+                )
+            )
+
+            obj = {}
+            obj["offset"] = self.buf.tell() - 8
+
+            op = self.buf.ru8()
+            match op >> 4:
+                case 0b0000:
+                    obj["type"] = {
+                        0b0000: "null",
+                        0b1000: "false",
+                        0b1001: "true",
+                        0b1111: "fill",
+                    }.get(
+                        op & 0x0f, f"Unknown simple (0b{bin(op & 0x0f)[2:].zfill(4)})"
+                    )
+                    obj["value"] = {0b1000: False, 0b1001: True}.get(op & 0x0f)
+                case 0b0001:
+                    obj["type"] = "int"
+                    obj["size"] = self.read_size(op)
+                    obj["value"] = int.from_bytes(
+                        self.buf.read(2 ** obj["size"]), "big"
+                    )
+                case 0b0010:
+                    obj["type"] = "real"
+                    obj["size"] = self.read_size(op)
+
+                    match obj["size"]:
+                        case 2:
+                            obj["value"] = self.buf.rf32()
+                        case 3:
+                            obj["value"] = self.buf.rf64()
+                        case _:
+                            obj["value"] = None
+                            obj["unknown"] = True
+                case 0b0011:
+                    obj["type"] = "date"
+                    val = self.buf.rf64()
+                    obj["value"] = (
+                        utils.unix_to_date(int(val) + 978307200)[:-6]
+                        + "."
+                        + str(val).split(".")[1].zfill(6)[:6]
+                        + "+00:00"
+                    )
+                case 0b0100:
+                    obj["type"] = "data"
+                    obj["size"] = self.read_size(op)
+                    obj["value"] = self.buf.rh(obj["size"])
+                case 0b0101:
+                    obj["type"] = "ascii-string"
+                    obj["size"] = self.read_size(op)
+                    obj["value"] = self.buf.read(obj["size"]).decode("latin-1")
+                case 0b1010:
+                    obj["type"] = "array"
+                    obj["size"] = self.read_size(op)
+
+                    obj["value"] = [
+                        int.from_bytes(
+                            self.buf.read(meta["trailer"]["object-reference-size"]),
+                            "big",
+                        )
+                        for i in range(0, obj["size"])
+                    ]
+                case 0b1101:
+                    obj["type"] = "dict"
+                    obj["size"] = self.read_size(op)
+                    keys = [
+                        int.from_bytes(
+                            self.buf.read(meta["trailer"]["object-reference-size"]),
+                            "big",
+                        )
+                        for i in range(0, obj["size"])
+                    ]
+                    obj["value"] = [
+                        {
+                            "key": key,
+                            "value": int.from_bytes(
+                                self.buf.read(meta["trailer"]["object-reference-size"]),
+                                "big",
+                            ),
+                        }
+                        for key in keys
+                    ]
+                case _:
+                    obj["type"] = f"Unknown (0b{bin(op >> 4)[2:].zfill(4)})"
+                    obj["unknown"] = True
+
+            objects.append(obj)
+
+        meta["objects"] = objects
+        meta["root"] = self.rebuild(
+            objects[meta["trailer"]["top-object-offset"]], objects
+        )
+
+        self.buf.seek(self.buf.size())
+
+        return meta

@@ -113,6 +113,8 @@ Ruminant is still in early alpha but it can already process the following file t
 * Microsoft cabinet files
 * btrfs stream files
 * Duck IVF video files
+* Apple binary plist files
+  * the text ones are just already supported XML files
 
 # How do I install it?
 Run `pip3 install ruminant`.
