@@ -234,174 +234,187 @@ class PdfModule(module.RuminantModule):
                 while not line.endswith(b"stream"):
                     line = buf.rl()
 
-                with buf.sub(length):
-                    old_buf = buf
+                try:
+                    with buf.sub(length):
+                        old_buf = buf
 
-                    filters = self.resolve(obj["value"].get("Filter", []))
-                    if isinstance(filters, str):
-                        filters = [filters]
+                        filters = self.resolve(obj["value"].get("Filter", []))
+                        if isinstance(filters, str):
+                            filters = [filters]
 
-                    for filt in filters:
-                        match filt:
-                            case "/FlateDecode":
-                                content = buf.read()
+                        for filt in filters:
+                            match filt:
+                                case "/FlateDecode":
+                                    content = buf.read()
 
-                                try:
-                                    content = utils.zlib_decompress(content)
-                                except Exception:
-                                    obj["decompression-error"] = True
+                                    try:
+                                        content = utils.zlib_decompress(content)
+                                    except Exception:
+                                        obj["decompression-error"] = True
 
-                                buf = Buf(content)
-                            case "/LZWDecode":
-                                buf = Buf(lzw.decompress(buf.read()))
-                            case "/ASCIIHexDecode":
-                                buf = Buf(
-                                    bytes.fromhex(
-                                        buf
-                                        .read()
-                                        .rstrip(b"\n")
-                                        .split(b">")[0]
-                                        .decode("latin-1")
-                                    )
-                                )
-                            case "/ASCII85Decode":
-                                buf = Buf(
-                                    base64.a85decode(
-                                        buf
-                                        .read()
-                                        .rstrip(b"\n")
-                                        .split(b">")[0]
-                                        .decode("latin-1")
-                                    )
-                                )
-                            case (
-                                "/DCTDecode"
-                                | "/CCITTFaxDecode"
-                                | "/JPXDecode"
-                                | "/JBIG2Decode"
-                                | "/Crypt"
-                            ):
-                                pass
-                            case _:
-                                raise ValueError(f"Unknown filter '{filt}'")
-
-                    if "DecodeParms" in obj["value"]:
-                        params = self.resolve(obj["value"]["DecodeParms"])
-
-                        if "Predictor" in params:
-                            match params["Predictor"]:
-                                case 0:
-                                    pass
-                                case 2:
-                                    row_length = math.ceil(
-                                        params["Columns"]
-                                        * params.get("Colors", 1)
-                                        * params.get("BitsPerComponent", 8)
-                                        / 8
-                                    )
-                                    bpp = row_length // params["Columns"]
-
-                                    data = bytearray(buf.read())
-                                    for i in range(len(data)):
-                                        if i % row_length >= bpp:
-                                            data[i] = (data[i] + data[i - bpp]) % 256
-
-                                    buf = Buf(data)
-                                case 10 | 11 | 12 | 13 | 14 | 15:
+                                    buf = Buf(content)
+                                case "/LZWDecode":
+                                    buf = Buf(lzw.decompress(buf.read()))
+                                case "/ASCIIHexDecode":
                                     buf = Buf(
-                                        png.png_decode(
-                                            buf.read(),
-                                            params["Columns"],
-                                            math.ceil(
-                                                params["Columns"]
-                                                * params.get("Colors", 1)
-                                                * params.get("BitsPerComponent", 8)
-                                                / 8
-                                            )
-                                            + 1,
+                                        bytes.fromhex(
+                                            buf
+                                            .read()
+                                            .rstrip(b"\n")
+                                            .split(b">")[0]
+                                            .decode("latin-1")
                                         )
                                     )
+                                case "/ASCII85Decode":
+                                    buf = Buf(
+                                        base64.a85decode(
+                                            buf
+                                            .read()
+                                            .rstrip(b"\n")
+                                            .split(b">")[0]
+                                            .decode("latin-1")
+                                        )
+                                    )
+                                case (
+                                    "/DCTDecode"
+                                    | "/CCITTFaxDecode"
+                                    | "/JPXDecode"
+                                    | "/JBIG2Decode"
+                                    | "/Crypt"
+                                ):
+                                    pass
                                 case _:
-                                    raise ValueError(
-                                        f"Unknown predictor: {params['Predictor']}"
+                                    raise ValueError(f"Unknown filter '{filt}'")
+
+                        if "DecodeParms" in obj["value"]:
+                            params = self.resolve(obj["value"]["DecodeParms"])
+
+                            if "Predictor" in params:
+                                match params["Predictor"]:
+                                    case 0:
+                                        pass
+                                    case 2:
+                                        row_length = math.ceil(
+                                            params["Columns"]
+                                            * params.get("Colors", 1)
+                                            * params.get("BitsPerComponent", 8)
+                                            / 8
+                                        )
+                                        bpp = row_length // params["Columns"]
+
+                                        data = bytearray(buf.read())
+                                        for i in range(len(data)):
+                                            if i % row_length >= bpp:
+                                                data[i] = (
+                                                    data[i] + data[i - bpp]
+                                                ) % 256
+
+                                        buf = Buf(data)
+                                    case 10 | 11 | 12 | 13 | 14 | 15:
+                                        buf = Buf(
+                                            png.png_decode(
+                                                buf.read(),
+                                                params["Columns"],
+                                                math.ceil(
+                                                    params["Columns"]
+                                                    * params.get("Colors", 1)
+                                                    * params.get("BitsPerComponent", 8)
+                                                    / 8
+                                                )
+                                                + 1,
+                                            )
+                                        )
+                                    case _:
+                                        raise ValueError(
+                                            f"Unknown predictor: {params['Predictor']}"
+                                        )
+
+                        if packed is not None:
+                            buf.seek(
+                                self.resolve(obj["value"].get("First", 0)) + packed[0]
+                            )
+                            return self.parse_object(buf, obj_id=packed[1])
+
+                        obj_type = self.resolve(obj["value"].get("Type"))
+                        obj_subtype = self.resolve(obj["value"].get("Subtype"))
+
+                        match obj_type, obj_subtype:
+                            case "/Metadata", "/XML":
+                                obj["data"] = utils.xml_to_dict(buf.read())
+                            case "/XRef", _:
+                                w0, w1, w2 = self.resolve(obj["value"]["W"])
+                                index = self.resolve(obj["value"].get("Index", []))
+                                if len(index) == 0:
+                                    index = [0, (1 << 64) - 1]
+
+                                while buf.available():
+                                    f0 = (
+                                        int.from_bytes(buf.read(w0), "big") if w0 else 1
+                                    )
+                                    f1 = int.from_bytes(buf.read(w1), "big")
+                                    f2 = (
+                                        int.from_bytes(buf.read(w2), "big") if w2 else 0
                                     )
 
-                    if packed is not None:
-                        buf.seek(self.resolve(obj["value"].get("First", 0)) + packed[0])
-                        return self.parse_object(buf, obj_id=packed[1])
+                                    if f0 == 1:
+                                        self.queue.append((f1, old_buf))
+                                        index[0] += 1
+                                        index[1] -= 1
 
-                    obj_type = self.resolve(obj["value"].get("Type"))
-                    obj_subtype = self.resolve(obj["value"].get("Subtype"))
+                                        if index[1] <= 0:
+                                            index.pop(0)
+                                            index.pop(0)
+                                    elif f0 == 2 and (f1 | f2):
+                                        self.compressed.append((f1, f2, old_buf))
 
-                    match obj_type, obj_subtype:
-                        case "/Metadata", "/XML":
-                            obj["data"] = utils.xml_to_dict(buf.read())
-                        case "/XRef", _:
-                            w0, w1, w2 = self.resolve(obj["value"]["W"])
-                            index = self.resolve(obj["value"].get("Index", []))
-                            if len(index) == 0:
-                                index = [0, (1 << 64) - 1]
+                                if "Prev" in obj["value"]:
+                                    self.queue.append((
+                                        self.resolve(obj["value"]["Prev"]),
+                                        old_buf,
+                                    ))
+                            case "/ObjStm", _:
+                                tokens = list(self.tokenize(buf.rs(buf.unit)))
 
-                            while buf.available():
-                                f0 = int.from_bytes(buf.read(w0), "big") if w0 else 1
-                                f1 = int.from_bytes(buf.read(w1), "big")
-                                f2 = int.from_bytes(buf.read(w2), "big") if w2 else 0
+                                values = []
+                                while len(tokens) > 0:
+                                    values.append(self.parse_value(tokens))
 
-                                if f0 == 1:
-                                    self.queue.append((f1, old_buf))
-                                    index[0] += 1
-                                    index[1] -= 1
+                                obj["data"] = values
+                            case None, _:
+                                bak = buf.backup()
 
-                                    if index[1] <= 0:
-                                        index.pop(0)
-                                        index.pop(0)
-                                elif f0 == 2 and (f1 | f2):
-                                    self.compressed.append((f1, f2, old_buf))
+                                obj["data"] = chew(buf)
+                                if obj["data"]["type"] in ("unknown", "text"):
+                                    try:
+                                        with buf:
+                                            buf.restore(bak)
+                                            text = buf.rs(buf.unit)
 
-                            if "Prev" in obj["value"]:
-                                self.queue.append((
-                                    self.resolve(obj["value"]["Prev"]),
-                                    old_buf,
-                                ))
-                        case "/ObjStm", _:
-                            tokens = list(self.tokenize(buf.rs(buf.unit)))
+                                            assert len(text)
+                                            for char in text:
+                                                assert ord(char) >= 0x20 or ord(
+                                                    char
+                                                ) in (
+                                                    0x0a,
+                                                    0x0d,
+                                                    0x09,
+                                                )
 
-                            values = []
-                            while len(tokens) > 0:
-                                values.append(self.parse_value(tokens))
+                                            tokens = list(self.tokenize(text))
 
-                            obj["data"] = values
-                        case None, _:
-                            bak = buf.backup()
+                                            values = []
+                                            while len(tokens) > 0:
+                                                values.append(self.parse_value(tokens))
 
-                            obj["data"] = chew(buf)
-                            if obj["data"]["type"] in ("unknown", "text"):
-                                try:
-                                    with buf:
-                                        buf.restore(bak)
-                                        text = buf.rs(buf.unit)
+                                            obj["data"] = values
+                                    except Exception:
+                                        pass
+                            case _, _:
+                                obj["data"] = chew(buf)
 
-                                        assert len(text)
-                                        for char in text:
-                                            assert ord(char) >= 0x20 or ord(char) in (
-                                                0x0a,
-                                                0x0d,
-                                                0x09,
-                                            )
-
-                                        tokens = list(self.tokenize(text))
-
-                                        values = []
-                                        while len(tokens) > 0:
-                                            values.append(self.parse_value(tokens))
-
-                                        obj["data"] = values
-                                except Exception:
-                                    pass
-                        case _, _:
-                            obj["data"] = chew(buf)
-
-                    buf = old_buf
+                        buf = old_buf
+                except Exception:
+                    obj["error"] = True
 
         if packed is None:
             self.objects[obj_id][obj_generation] = obj
