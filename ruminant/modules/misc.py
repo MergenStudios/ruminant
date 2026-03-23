@@ -1525,6 +1525,10 @@ class BplistModule(module.RuminantModule):
                     obj["type"] = "unicode-string"
                     obj["size"] = self.read_size(op)
                     obj["value"] = self.buf.read(obj["size"] * 2).decode("utf-16be")
+                case 0b1000:
+                    obj["type"] = "uid"
+                    obj["size"] = self.read_size(op)
+                    obj["value"] = int.from_bytes(self.buf.read(obj["size"] + 1), "big")
                 case 0b1010:
                     obj["type"] = "array"
                     obj["size"] = self.read_size(op)
