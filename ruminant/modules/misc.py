@@ -824,7 +824,6 @@ class SafeTensorsModule(module.RuminantModule):
 
 @module.register
 class GgufModule(module.RuminantModule):
-    dev = True
     desc = "GGUF model files."
 
     def identify(buf, ctx):
@@ -961,6 +960,23 @@ class GgufModule(module.RuminantModule):
             tensor["offset"] = self.buf.ru64l()
 
             meta["tensors"].append(tensor)
+
+        tensor = meta["tensors"][0]
+        for t in meta["tensors"]:
+            if t["offset"] >= tensor["offset"]:
+                tensor = t
+
+        max_offset = tensor["offset"]
+
+        prod = 1
+        for dim in tensor["dimensions"]:
+            prod *= dim
+
+        match tensor["type"]:
+            case "F16":
+                max_offset += 2 * prod
+            case "F32":
+                max_offset += 4 * prod
 
         self.buf.seek((self.buf.tell() + alignment - 1) % alignment)
         self.buf.seek(self.buf.tell() + max_offset)
