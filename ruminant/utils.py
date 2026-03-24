@@ -197,6 +197,24 @@ def read_protobuf(buf, length, escape=False, decode={}):
                     case "s64":
                         # bytes are actually a signed long
                         value = (2**64 - 1) - value - 1
+                    case "u8":
+                        # bytes are actually u8s
+                        value = [
+                            int.from_bytes(value[i : i + 1], "little")
+                            for i in range(0, len(value))
+                        ]
+                    case "u32":
+                        # bytes are actually u32s
+                        value = [
+                            int.from_bytes(value[i : i + 4], "little")
+                            for i in range(0, len(value), 4)
+                        ]
+                    case "u64":
+                        # bytes are actually u64s
+                        value = [
+                            int.from_bytes(value[i : i + 8], "little")
+                            for i in range(0, len(value), 8)
+                        ]
                     case _:
                         # unknown decode type, shouldn't happen
                         if escape:

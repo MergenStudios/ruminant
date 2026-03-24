@@ -8064,3 +8064,21 @@ CRC32C_TABLE = [
 ]
 
 PCI_VENDORS = {0x4353: "Advanced Micro Devices"}
+
+IWORK_PROTO = {
+    "keys": {1: "identifier", 2: "message_infos"},
+    2: {
+        "keys": {
+            1: "type",
+            2: "version",
+            3: "length",
+            4: "field_infos",
+            5: "object_references",
+            6: "data_references",
+        },
+        2: "u8",
+        4: {},
+        5: "u64",
+        6: "u64",
+    },
+}

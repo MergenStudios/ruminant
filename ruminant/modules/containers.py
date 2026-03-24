@@ -1648,7 +1648,9 @@ class IwaModule(module.RuminantModule):
 
         for buf in bufs:
             buf = Buf(buf)
-            protobuf = utils.read_protobuf(buf, buf.ruleb())
+            protobuf = utils.read_protobuf(
+                buf, buf.ruleb(), decode=constants.IWORK_PROTO
+            )
 
             with buf.sub(buf.available()):
                 content = chew(buf)
