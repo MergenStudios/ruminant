@@ -10,6 +10,7 @@ from .constants import (
 )
 from .buf import Buf, _decode
 from .modules import chew
+from .module import debug
 import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
@@ -147,6 +148,7 @@ def read_protobuf(buf, length, escape=False, decode={}):
     entries = {}
     while buf.unit > 0:
         entry_id = read_varint(buf)
+
         entry_type = entry_id & 0b111
         entry_id >>= 3
 
@@ -1582,3 +1584,53 @@ def unpack_flags(val, names):
             flags["names"].append(v)
 
     return flags
+
+
+def memcpy_snappy(data, offset, length):
+    start = len(data) - offset
+
+    if offset >= length:
+        data.extend(data[start : start + length])
+    else:
+        for i in range(0, length):
+            data.append(data[start])
+            start += 1
+
+
+def unpack_snappy(blob):
+    buf = Buf(blob)
+    buf.ruleb()
+
+    data = bytearray()
+    while buf.available() > 0:
+        op = buf.ru8()
+        typ = op & 0x03
+
+        match typ:
+            case 0b00:
+                length = op >> 2
+                if length >= 60:
+                    length = int.from_bytes(buf.read(length - 59), "little")
+
+                if debug:
+                    print("lit", op, length)
+
+                data += buf.read(length + 1)
+            case 0b01:
+                length = ((op >> 2) & 0x07) + 4
+                offset = ((op >> 5) << 8) | buf.ru8()
+
+                if debug:
+                    print("copy-1", op, length, offset)
+
+                memcpy_snappy(data, offset, length)
+            case 0b10 | 0b11:
+                length = (op >> 2) + 1
+                offset = buf.ru16l() if typ == 0b10 else buf.ru32l()
+
+                if debug:
+                    print("copy-2" if typ == 0b10 else "copy-4", op, length, offset)
+
+                memcpy_snappy(data, offset, length)
+
+    return bytes(data)

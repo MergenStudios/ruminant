@@ -1570,3 +1570,91 @@ class CabinetModule(module.RuminantModule):
         self.buf.seek(meta["header"]["total-size"])
 
         return meta
+
+
+@module.register
+class IwaModule(module.RuminantModule):
+    dev = True
+    desc = "IWA files."
+    priority = 2
+
+    def clean(self, obj):
+        match obj.__class__.__name__:
+            case "dict":
+                for k, v in obj.items():
+                    obj[k] = self.clean(v)
+
+                return obj
+            case "list":
+                for i in range(0, len(obj)):
+                    obj[i] = self.clean(obj[i])
+
+                return obj
+            case "bytes":
+                try:
+                    return self.clean(utils.read_protobuf(Buf(obj), len(obj)))
+                except Exception:
+                    return obj.hex()
+            case _:
+                return obj
+
+    def identify(buf, ctx):
+        if ctx["walk"]:
+            return False
+
+        with buf:
+            if buf.available() < 4:
+                return False
+
+            while True:
+                if buf.available() == 0:
+                    return True
+
+                if buf.available() < 4:
+                    return False
+
+                if buf.ru8() not in (0x00, 0x01, 0xfe):
+                    return False
+
+                length = buf.ru24l()
+
+                if buf.available() < length:
+                    return False
+
+                buf.skip(length)
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "iwa"
+
+        data = []
+        while self.buf.available() > 0:
+            temp = self.buf.read(1)
+            data.append(temp + self.buf.read(self.buf.ru24l()))
+
+        bufs = []
+        for blob in data:
+            match blob[0]:
+                case 0x00:
+                    bufs.append(utils.unpack_snappy(blob[1:]))
+                case 0x01:
+                    bufs.append(blob[1:])
+                case 0xfe:
+                    pass
+                case _:
+                    raise NotImplementedError()
+
+        meta["data"] = []
+
+        for buf in bufs:
+            buf = Buf(buf)
+            protobuf = utils.read_protobuf(buf, buf.ruleb())
+
+            with buf.sub(buf.available()):
+                content = chew(buf)
+
+            meta["data"].append({"protobuf": protobuf, "content": content})
+
+        self.clean(meta["data"])
+
+        return meta
