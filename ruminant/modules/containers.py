@@ -1574,7 +1574,6 @@ class CabinetModule(module.RuminantModule):
 
 @module.register
 class IwaModule(module.RuminantModule):
-    dev = True
     desc = "IWA files."
     priority = 2
 
