@@ -1296,6 +1296,7 @@ class PNGModule(module.RuminantModule):
         meta["type"] = "png"
 
         color_type = None
+        headerless = False
 
         self.buf.seek(8)
         meta["chunks"] = []
@@ -1363,7 +1364,13 @@ class PNGModule(module.RuminantModule):
                             }
                             chunk["data"]["profile"] = chew(
                                 b"ICC_PROFILE\x00\x00\x00"
-                                + zlib.decompress(self.buf.readunit())
+                                + (
+                                    zlib.decompress(
+                                        self.buf.readunit(), -zlib.MAX_WBITS
+                                    )
+                                    if headerless
+                                    else zlib.decompress(self.buf.readunit())
+                                )
                             )
                         case _:
                             chunk["data"]["compression-method"] = {
@@ -1399,8 +1406,12 @@ class PNGModule(module.RuminantModule):
                                         "raw": 0,
                                         "name": "DEFLATE",
                                     }
-                                    chunk["data"]["text"] = zlib.decompress(
-                                        self.buf.readunit()
+                                    chunk["data"]["text"] = (
+                                        zlib.decompress(
+                                            self.buf.readunit(), -zlib.MAX_WBITS
+                                        )
+                                        if headerless
+                                        else zlib.decompress(self.buf.readunit())
                                     )
                                 case _:
                                     chunk["data"]["compression-method"] = {
@@ -1422,8 +1433,12 @@ class PNGModule(module.RuminantModule):
                                             "raw": 0,
                                             "name": "DEFLATE",
                                         }
-                                        chunk["data"]["text"] = zlib.decompress(
-                                            self.buf.readunit()
+                                        chunk["data"]["text"] = (
+                                            zlib.decompress(
+                                                self.buf.readunit(), -zlib.MAX_WBITS
+                                            )
+                                            if headerless
+                                            else zlib.decompress(self.buf.readunit())
                                         )
                                     else:
                                         chunk["data"]["compression-method"] = {
@@ -1564,6 +1579,7 @@ class PNGModule(module.RuminantModule):
                 case "fdAT":
                     chunk["data"]["sequence-number"] = self.buf.ru32()
                 case "CgBI":
+                    headerless = True
                     chunk["data"]["payload"] = self.buf.rh(self.buf.unit)
                 case "IDAT" | "IEND" | "PLTE" | "tRNS" | "npOl" | "npTc":
                     pass
