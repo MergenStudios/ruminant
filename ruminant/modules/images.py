@@ -1563,6 +1563,8 @@ class PNGModule(module.RuminantModule):
                     chunk["data"]["blend-op"] = self.buf.ru8()
                 case "fdAT":
                     chunk["data"]["sequence-number"] = self.buf.ru32()
+                case "CgBI":
+                    chunk["data"]["payload"] = self.buf.rh(self.buf.unit)
                 case "IDAT" | "IEND" | "PLTE" | "tRNS" | "npOl" | "npTc":
                     pass
                 case _:
