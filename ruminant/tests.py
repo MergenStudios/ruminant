@@ -1,4 +1,4 @@
-from . import utils
+from . import utils, crypto
 from .buf import Buf
 
 tests = {}
@@ -696,3 +696,141 @@ def der_instance(name, data, dest):
 
 for instance in der_test_cases:
     der_instance(*instance)
+
+
+@test("AES", "128-bit encrypt")
+def aes_128_encrypt():
+    cipher = crypto.AES(bytes.fromhex("2b7e151628aed2a6abf7158809cf4f3c"))
+    assert_eq(
+        cipher.encrypt(bytes.fromhex("6bc1bee22e409f96e93d7e117393172a")).hex(),
+        "3ad77bb40d7a3660a89ecaf32466ef97",
+    )
+    assert_eq(
+        cipher.encrypt(bytes.fromhex("ae2d8a571e03ac9c9eb76fac45af8e51")).hex(),
+        "f5d3d58503b9699de785895a96fdbaaf",
+    )
+    assert_eq(
+        cipher.encrypt(bytes.fromhex("30c81c46a35ce411e5fbc1191a0a52ef")).hex(),
+        "43b1cd7f598ece23881b00e3ed030688",
+    )
+    assert_eq(
+        cipher.encrypt(bytes.fromhex("f69f2445df4f9b17ad2b417be66c3710")).hex(),
+        "7b0c785e27e8ad3f8223207104725dd4",
+    )
+
+
+@test("AES", "128-bit decrypt")
+def aes_128_decrypt():
+    cipher = crypto.AES(bytes.fromhex("2b7e151628aed2a6abf7158809cf4f3c"))
+    assert_eq(
+        cipher.decrypt(bytes.fromhex("3ad77bb40d7a3660a89ecaf32466ef97")).hex(),
+        "6bc1bee22e409f96e93d7e117393172a",
+    )
+    assert_eq(
+        cipher.decrypt(bytes.fromhex("f5d3d58503b9699de785895a96fdbaaf")).hex(),
+        "ae2d8a571e03ac9c9eb76fac45af8e51",
+    )
+    assert_eq(
+        cipher.decrypt(bytes.fromhex("43b1cd7f598ece23881b00e3ed030688")).hex(),
+        "30c81c46a35ce411e5fbc1191a0a52ef",
+    )
+    assert_eq(
+        cipher.decrypt(bytes.fromhex("7b0c785e27e8ad3f8223207104725dd4")).hex(),
+        "f69f2445df4f9b17ad2b417be66c3710",
+    )
+
+
+@test("AES", "192-bit encrypt")
+def aes_192_encrypt():
+    cipher = crypto.AES(
+        bytes.fromhex("8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b")
+    )
+    assert_eq(
+        cipher.encrypt(bytes.fromhex("6bc1bee22e409f96e93d7e117393172a")).hex(),
+        "bd334f1d6e45f25ff712a214571fa5cc",
+    )
+    assert_eq(
+        cipher.encrypt(bytes.fromhex("ae2d8a571e03ac9c9eb76fac45af8e51")).hex(),
+        "974104846d0ad3ad7734ecb3ecee4eef",
+    )
+    assert_eq(
+        cipher.encrypt(bytes.fromhex("30c81c46a35ce411e5fbc1191a0a52ef")).hex(),
+        "ef7afd2270e2e60adce0ba2face6444e",
+    )
+    assert_eq(
+        cipher.encrypt(bytes.fromhex("f69f2445df4f9b17ad2b417be66c3710")).hex(),
+        "9a4b41ba738d6c72fb16691603c18e0e",
+    )
+
+
+@test("AES", "192-bit decrypt")
+def aes_192_decrypt():
+    cipher = crypto.AES(
+        bytes.fromhex("8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b")
+    )
+    assert_eq(
+        cipher.decrypt(bytes.fromhex("bd334f1d6e45f25ff712a214571fa5cc")).hex(),
+        "6bc1bee22e409f96e93d7e117393172a",
+    )
+    assert_eq(
+        cipher.decrypt(bytes.fromhex("974104846d0ad3ad7734ecb3ecee4eef")).hex(),
+        "ae2d8a571e03ac9c9eb76fac45af8e51",
+    )
+    assert_eq(
+        cipher.decrypt(bytes.fromhex("ef7afd2270e2e60adce0ba2face6444e")).hex(),
+        "30c81c46a35ce411e5fbc1191a0a52ef",
+    )
+    assert_eq(
+        cipher.decrypt(bytes.fromhex("9a4b41ba738d6c72fb16691603c18e0e")).hex(),
+        "f69f2445df4f9b17ad2b417be66c3710",
+    )
+
+
+@test("AES", "256-bit encrypt")
+def aes_256_encrypt():
+    cipher = crypto.AES(
+        bytes.fromhex(
+            "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"
+        )
+    )
+    assert_eq(
+        cipher.encrypt(bytes.fromhex("6bc1bee22e409f96e93d7e117393172a")).hex(),
+        "f3eed1bdb5d2a03c064b5a7e3db181f8",
+    )
+    assert_eq(
+        cipher.encrypt(bytes.fromhex("ae2d8a571e03ac9c9eb76fac45af8e51")).hex(),
+        "591ccb10d410ed26dc5ba74a31362870",
+    )
+    assert_eq(
+        cipher.encrypt(bytes.fromhex("30c81c46a35ce411e5fbc1191a0a52ef")).hex(),
+        "b6ed21b99ca6f4f9f153e7b1beafed1d",
+    )
+    assert_eq(
+        cipher.encrypt(bytes.fromhex("f69f2445df4f9b17ad2b417be66c3710")).hex(),
+        "23304b7a39f9f3ff067d8d8f9e24ecc7",
+    )
+
+
+@test("AES", "256-bit decrypt")
+def aes_256_decrypt():
+    cipher = crypto.AES(
+        bytes.fromhex(
+            "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"
+        )
+    )
+    assert_eq(
+        cipher.decrypt(bytes.fromhex("f3eed1bdb5d2a03c064b5a7e3db181f8")).hex(),
+        "6bc1bee22e409f96e93d7e117393172a",
+    )
+    assert_eq(
+        cipher.decrypt(bytes.fromhex("591ccb10d410ed26dc5ba74a31362870")).hex(),
+        "ae2d8a571e03ac9c9eb76fac45af8e51",
+    )
+    assert_eq(
+        cipher.decrypt(bytes.fromhex("b6ed21b99ca6f4f9f153e7b1beafed1d")).hex(),
+        "30c81c46a35ce411e5fbc1191a0a52ef",
+    )
+    assert_eq(
+        cipher.decrypt(bytes.fromhex("23304b7a39f9f3ff067d8d8f9e24ecc7")).hex(),
+        "f69f2445df4f9b17ad2b417be66c3710",
+    )
