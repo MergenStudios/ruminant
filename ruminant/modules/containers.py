@@ -1,5 +1,5 @@
 from . import chew
-from .. import module, utils, constants
+from .. import module, utils, constants, secrets
 from ..buf import Buf
 
 import tempfile
@@ -11,6 +11,16 @@ import zlib
 @module.register
 class ZipModule(module.RuminantModule):
     desc = "ZIP files.\nThis includes file formats that use ZIP files as a container like e.g. DOCX or JAR files."
+
+    CRC_TABLE = [0] * 256
+    for i in range(256):
+        c = i
+        for _ in range(8):
+            if c & 1:
+                c = (c >> 1) ^ 0xedb88320
+            else:
+                c >>= 1
+        CRC_TABLE[i] = c
 
     def identify(buf, ctx):
         return buf.peek(4) == b"\x50\x4b\x03\x04"
@@ -235,6 +245,24 @@ class ZipModule(module.RuminantModule):
         self.buf.sapunit()
         return entry
 
+    def crc32_update(self, crc, byte):
+        return (self.CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >> 8)) & 0xffffffff
+
+    def kdf(self, passwd):
+        passwd = passwd.encode("utf-8")
+
+        K0 = 305419896
+        K1 = 591751049
+        K2 = 878082192
+
+        for b in passwd:
+            K0 = self.crc32_update(K0, b)
+            K1 = (K1 + (K0 & 0xff)) & 0xffffffff
+            K1 = (K1 * 134775813 + 1) & 0xffffffff
+            K2 = self.crc32_update(K2, (K1 >> 24) & 0xff)
+
+        return K0, K1, K2
+
     def chew(self):
         meta = {}
         meta["type"] = "zip"
@@ -254,6 +282,7 @@ class ZipModule(module.RuminantModule):
 
         self.buf.seek(meta["eocd"]["central-directory-offset"])
 
+        meta["key"] = None
         meta["files"] = []
         while self.buf.pu32() == 0x504b0102:
             self.buf.skip(4)
@@ -482,8 +511,59 @@ class ZipModule(module.RuminantModule):
                     self.buf.skip(self.buf.ru16l() + self.buf.ru16l())
 
                     if file["meta"]["general-flags"]["raw"] & 0x0041:
-                        with self.buf.sub(file["meta"]["compressed-size"]):
-                            file["encrypted-data"] = chew(self.buf, blob_mode=True)
+                        if meta["key"] is None:
+                            meta["key"] = {}
+                            meta["key"]["name"] = self.buf.ph(12)
+                            meta["key"]["found"] = (
+                                secrets.get(meta["key"]["name"]) is not None
+                            )
+
+                        key = secrets.get(meta["key"]["name"])
+                        if isinstance(key, str):
+                            key = self.kdf(key)
+                            secrets.set(meta["key"]["name"], key)
+
+                        file["header"] = self.buf.ph(12)
+
+                        if key is not None:
+                            file["password-header"] = ""
+                            fd = tempfile.TemporaryFile()
+
+                            key = list(key)
+                            for i in range(0, file["meta"]["compressed-size"]):
+                                c = self.buf.ru8()
+                                temp = (key[2] & 0xffff) | 2
+                                k = ((temp * (temp ^ 1)) >> 8) & 0xff
+                                c ^= k
+
+                                if i >= 12:
+                                    fd.write(bytes([c]))
+                                else:
+                                    file["password-header"] += hex(c)[2:].zfill(2)
+
+                                key[0] = self.crc32_update(key[0], c)
+                                key[1] = (key[1] + (key[0] & 0xff)) & 0xffffffff
+                                key[1] = (key[1] * 134775813 + 1) & 0xffffffff
+                                key[2] = self.crc32_update(
+                                    key[2], (key[1] >> 24) & 0xff
+                                )
+
+                            fd.seek(0)
+                            fd = Buf(fd)
+
+                            match file["meta"]["compression-method"]:
+                                case "Uncompressed":
+                                    file["data"] = chew(fd)
+
+                                case "Deflate":
+                                    fd2 = tempfile.TemporaryFile()
+                                    utils.stream_deflate(fd, fd2, fd.available())
+                                    fd2.seek(0)
+
+                                    file["data"] = chew(fd2)
+                        else:
+                            with self.buf.sub(file["meta"]["compressed-size"]):
+                                file["encrypted-data"] = chew(self.buf, blob_mode=True)
                     else:
                         match file["meta"]["compression-method"]:
                             case "Uncompressed":
@@ -526,6 +606,10 @@ class ZipModule(module.RuminantModule):
                 self.buf.sapunit()
 
         self.buf.seek(eof)
+
+        if meta["key"] is None:
+            del meta["key"]
+
         return meta
 
 

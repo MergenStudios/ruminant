@@ -1,4 +1,4 @@
-from . import modules, module, constants, utils, gui
+from . import modules, module, constants, utils, gui, secrets
 from .buf import Buf
 import argparse
 import sys
@@ -155,6 +155,22 @@ def main(dev=False):
     )
 
     parser.add_argument(
+        "--secret",
+        "-s",
+        nargs=2,
+        metavar=("ID", "VALUE"),
+        action="append",
+        help="Supply single secret",
+    )
+
+    parser.add_argument(
+        "--secret-file",
+        nargs=1,
+        action="append",
+        help="Supply a secret file",
+    )
+
+    parser.add_argument(
         "--walk",
         "-w",
         action="store_true",
@@ -271,6 +287,22 @@ def main(dev=False):
                 modules.to_extract.append((int(k), v))
             except ValueError:
                 print(f"Cannot parse blob ID {k}", file=sys.stderr)
+                exit(1)
+
+    if args.secret is not None:
+        for k, v in args.secret:
+            # register secrets
+            secrets.set(k, v)
+
+    if args.secret_file is not None:
+        for fn in args.secret_file:
+            try:
+                # read json from file and register secrets
+                with open(fn, "r") as f:
+                    for k, v in json.load(f).items():
+                        secrets.set(k, v)
+            except Exception:
+                print(f"Cannot open and parse file {fn}", file=sys.stderr)
                 exit(1)
 
     if args.url:
