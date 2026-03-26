@@ -296,6 +296,8 @@ def main(dev=False):
 
     if args.secret_file is not None:
         for fn in args.secret_file:
+            fn = fn[0]
+
             try:
                 # read json from file and register secrets
                 with open(fn, "r") as f:
