@@ -33,11 +33,19 @@ def walk_helper(path, filename_regex):
             yield file
 
 
+slim = False
+
+
 # process a file
 def process(file, walk):
     if not walk:
         # shortcut if walk mode isn't needed
-        return json.dumps(modules.chew(file), indent=2, ensure_ascii=False)
+        if slim:
+            return json.dumps(
+                modules.chew(file), separators=(",", ":"), ensure_ascii=False
+            )
+        else:
+            return json.dumps(modules.chew(file), indent=2, ensure_ascii=False)
 
     # we do a binwalk style walk now
     buf = Buf(file)
@@ -97,11 +105,18 @@ def process(file, walk):
                         file.write(blob)
                         length -= len(blob)
 
-    return json.dumps(
-        {"type": "walk", "length": buf.size(), "entries": data},
-        indent=2,
-        ensure_ascii=False,
-    )
+    if slim:
+        return json.dumps(
+            {"type": "walk", "length": buf.size(), "entries": data},
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+    else:
+        return json.dumps(
+            {"type": "walk", "length": buf.size(), "entries": data},
+            indent=2,
+            ensure_ascii=False,
+        )
 
 
 def main(dev=False):
@@ -215,6 +230,10 @@ def main(dev=False):
 
     parser.add_argument(
         "--shallow", action="store_true", help="Do not chew recovered blobs recursively"
+    )
+
+    parser.add_argument(
+        "--slim", action="store_true", help="Output JSON without extra whitespace"
     )
 
     parser.add_argument(
@@ -350,6 +369,9 @@ def main(dev=False):
         if args.file == "-":
             args.file = "/dev/stdin"
 
+    global slim
+    slim = args.slim
+
     # GUI mode
     if gui.has_gui and args.gui:
         # redirect stdout to capture and parse it later
@@ -379,7 +401,10 @@ def main(dev=False):
     else:
         if os.path.isdir(args.file):
             # fake json so it prints for each file the moment it has been parsed
-            print('{\n  "type": "directory",\n  "files": [')
+            if slim:
+                print('{"type":"directory","files":[', end="")
+            else:
+                print('{\n  "type": "directory",\n  "files": [')
 
             filename_regex = re.compile(args.filename_regex)
 
@@ -409,24 +434,36 @@ def main(dev=False):
                         if first:
                             first = False
                         else:
-                            print(",")
+                            print(",", end="")
 
-                        print(
-                            f'    {{\n      "path": {json.dumps(file)},\n      "data": {{'
-                        )
+                        if slim:
+                            print(f'{{"path":{json.dumps(file)},"data":{{', end="")
+                        else:
+                            print(
+                                f'    {{\n      "path": {json.dumps(file)},\n      "data": {{'
+                            )
 
-                        print(
-                            "\n".join([
-                                "      " + x
-                                for x in process(fd, args.walk).split("\n")[1:-1]
-                            ])
-                        )
+                        if slim:
+                            print(process(fd, args.walk)[1:-1], end="")
+                        else:
+                            print(
+                                "\n".join([
+                                    "      " + x
+                                    for x in process(fd, args.walk).split("\n")[1:-1]
+                                ])
+                            )
 
-                        print("      }\n    }", end="")
+                        if slim:
+                            print("}}", end="")
+                        else:
+                            print("      }\n    }", end="")
                 except Exception:
                     pass
 
-            print("\n  ]\n}")
+            if slim:
+                print("]}")
+            else:
+                print("\n  ]\n}")
 
         else:
             try:
