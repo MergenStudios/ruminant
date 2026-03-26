@@ -212,3 +212,91 @@ class AES:
             )
 
         return bytes(res)
+
+
+def aes_xts_plain64(K1, K2, sector_size):
+    def gma(tweak):
+        tweak = int.from_bytes(tweak, "big")
+        carry = tweak >> 127
+        tweak <<= 1
+        if carry:
+            tweak ^= 0x87
+        tweak &= (2**128) - 1
+        tweak = tweak.to_bytes(16, "big")
+        return tweak
+
+    def decrypt(offset, ciphertext):
+        assert offset % 16 == 0, "unaligned"
+        C1 = AES(K1)
+        C2 = AES(K2)
+
+        plaintext = b""
+
+        sector = -1
+        T = b""
+        for i in range(offset, offset + len(ciphertext), 16):
+            c = ciphertext[i : i + 16]
+
+            if i // sector_size != sector:
+                sector = i // sector_size
+                T = C2.encrypt(sector.to_bytes(16, "little"))
+
+                for j in range(0, (i % sector_size) // 16):
+                    T = gma(T)
+
+            c = bytes([x ^ y for x, y in zip(c, T)])
+            c = C1.decrypt(c)
+            c = bytes([x ^ y for x, y in zip(c, T)])
+            T = gma(T)
+
+            plaintext += T
+
+        return plaintext
+
+    return decrypt
+
+
+class CryptoBuf(object):
+    _buf_magic = True
+
+    def __init__(self, file, decrypt_function):
+        self._file = file
+        self._decrypt_function = decrypt_function
+
+        file.seek(0, 2)
+        self._size = file.tell()
+        file.seek(0)
+
+        self._cache = {}
+        self._page_size = 65536
+
+    def read(self, size=-1):
+        if size == -1:
+            size = self._size - self._file.tell()
+
+        pos = self._file.tell()
+
+        data = b""
+        for page in range(
+            (pos // self._page_size) * self._page_size,
+            ((pos + size + self._page_size - 1) // self._page_size) * self._page_size,
+            self._page_size,
+        ):
+            self._decrypt(page)
+            data += self._cache[page]
+
+        self._file.seek(pos + size)
+        return data[pos % self._page_size : (pos % self._page_size) + size]
+
+    def _decrypt(self, page):
+        if page not in self._cache:
+            self._file.seek(page)
+            self._cache[page] = self._decrypt_function(
+                page, self._file.read(self._page_size)
+            )
+
+    def write(self, data):
+        raise NotImplementedError()
+
+    def __getattr__(self, name):
+        return getattr(self._file, name)

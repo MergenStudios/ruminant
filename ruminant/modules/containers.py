@@ -523,8 +523,6 @@ class ZipModule(module.RuminantModule):
                             key = self.kdf(key)
                             secrets.set(meta["key"]["name"], key)
 
-                        file["header"] = self.buf.ph(12)
-
                         if key is not None:
                             file["password-header"] = ""
                             fd = tempfile.TemporaryFile()

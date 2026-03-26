@@ -1,4 +1,4 @@
-from .. import module, utils
+from .. import module, utils, secrets, crypto
 from ..buf import Buf
 from ..constants import AGE_DRAND_CHAINS
 from . import chew
@@ -440,19 +440,61 @@ class LuksModule(module.RuminantModule):
                 self.buf.skip(184)
                 meta["header"]["checksum"] = self.buf.rh(64)
                 self.buf.skip(7 * 512)
-
-                if meta["header"]["version"] == 2:
-                    meta["json"] = json.loads(self.buf.rs(self.buf.unit))
+                meta["json"] = json.loads(self.buf.rs(self.buf.unit))
 
                 self.buf.sapunit()
 
                 m = 0
                 for _, v in meta["json"].get("segments", {}).items():
                     if v.get("size") == "dynamic":
-                        m = self.buf.size()
+                        m = self.buf.size() - int(v.get("offset", 0))
                         break
 
                     m = max(m, int(v.get("offset", 0)) + int(v.get("size", 0)))
+
+                keys = {}
+                for index, keyslot in meta["json"].get("keyslots", {}).items():
+                    blob = keyslot["kdf"]["type"].encode("utf-8") + base64.b64decode(
+                        keyslot["kdf"].get("salt")
+                    )
+
+                    try:
+                        self.buf.seek(keyslot["area"]["offset"])
+                        blob += self.buf.read(keyslot["area"]["size"])
+                    except Exception:
+                        pass
+
+                    name = hashlib.sha256(blob).hexdigest()
+
+                    key = secrets.get(name)
+                    keyslot["key"] = {}
+                    keyslot["key"]["name"] = name
+                    keyslot["key"]["found"] = key is not None
+
+                    if key is not None:
+                        key = bytes.fromhex(key)
+                        keys[int(index)] = [key[: len(key) // 2], key[len(key) // 2 :]]
+
+                for index, segment in meta["json"].get("segments", {}).items():
+                    index = int(index)
+
+                    if index in keys and segment.get("encryption") == "aes-xts-plain64":
+                        self.buf.seek(int(segment["offset"]))
+                        with self.buf.sub(
+                            segment["size"]
+                            if segment["size"] != "dynamic"
+                            else self.buf.available()
+                        ):
+                            buf = crypto.CryptoBuf(
+                                self.buf,
+                                crypto.aes_xts_plain64(
+                                    keys[index][0],
+                                    keys[index][1],
+                                    segment["sector_size"],
+                                ),
+                            )
+
+                            segment["data"] = chew(buf, blob_mode=True)
 
                 self.buf.seek(m)
             case _:

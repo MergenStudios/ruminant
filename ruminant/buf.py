@@ -12,7 +12,7 @@ def _decode(content, encoding="utf-8"):
 
 class Buf(object):
     def __init__(self, source):
-        if isinstance(source, io.IOBase):
+        if isinstance(source, io.IOBase) or hasattr(source, "_buf_magic"):
             self._file = source
         else:
             self._file = io.BytesIO(source)
