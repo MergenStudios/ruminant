@@ -260,7 +260,7 @@ def aes_xts_plain64(K1, K2, sector_size):
 
             if i // sector_size != sector:
                 sector = i // sector_size
-                T = C2.encrypt(sector.to_bytes(16, "little"))
+                T = C2.encrypt((i // 512).to_bytes(16, "little"))
 
                 for j in range(0, (i % sector_size) // 16):
                     T = gma(T)
