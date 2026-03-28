@@ -4,18 +4,36 @@ try:
     if "RUMINANT_NATIVE_MODE" in os.environ:
         raise Exception()
 
-    from Crypto.Cipher import AES as _AES
+    try:
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-    class AES:
-        def __init__(self, key):
-            assert len(key) in (16, 24, 32), "Unknown AES key length"
-            self.cipher = _AES.new(key, _AES.MODE_ECB)
+        class AES:
+            def __init__(self, key):
+                assert len(key) in (16, 24, 32), "Unknown AES key length"
+                self.cipher = Cipher(algorithms.AES(key), modes.ECV())
 
-        def encrypt(self, block):
-            return self.cipher.encrypt(block)
+            def encrypt(self, block):
+                encryptor = self.cipher.encryptor()
+                return encryptor.update(block) + encryptor.finalize()
 
-        def decrypt(self, block):
-            return self.cipher.decrypt(block)
+            def decrypt(self, block):
+                decryptor = self.cipher.decryptor()
+                return decryptor.update(block) + decryptor.finalize()
+
+    except ModuleNotFoundError:
+        # fallback
+        from Crypto.Cipher import AES as _AES
+
+        class AES:
+            def __init__(self, key):
+                assert len(key) in (16, 24, 32), "Unknown AES key length"
+                self.cipher = _AES.new(key, _AES.MODE_ECB)
+
+            def encrypt(self, block):
+                return self.cipher.encrypt(block)
+
+            def decrypt(self, block):
+                return self.cipher.decrypt(block)
 
 except Exception:
 
@@ -248,31 +266,49 @@ def aes_xts_plain64(K1, K2, sector_size):
 
     def decrypt(offset, ciphertext):
         assert offset % 16 == 0, "unaligned"
-        C1 = AES(K1)
-        C2 = AES(K2)
 
-        plaintext = b""
+        try:
+            assert offset % sector_size == 0
 
-        sector = -1
-        T = b""
-        for i in range(offset, offset + len(ciphertext), 16):
-            c = ciphertext[i - offset : i - offset + 16]
+            from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-            if i // sector_size != sector:
-                sector = i // sector_size
-                T = C2.encrypt((i // 512).to_bytes(16, "little"))
+            plaintext = b""
+            for i in range(0, len(ciphertext), sector_size):
+                dec = Cipher(
+                    algorithms.AES(K1 + K2),
+                    modes.XTS(((i + offset) // 512).to_bytes(16, "little")),
+                ).decryptor()
+                plaintext += (
+                    dec.update(ciphertext[i : i + sector_size]) + dec.finalize()
+                )
 
-                for j in range(0, (i % sector_size) // 16):
-                    T = gma(T)
+            return plaintext
+        except Exception:
+            C1 = AES(K1)
+            C2 = AES(K2)
 
-            c = bytes([x ^ y for x, y in zip(c, T)])
-            c = C1.decrypt(c)
-            c = bytes([x ^ y for x, y in zip(c, T)])
-            T = gma(T)
+            plaintext = b""
 
-            plaintext += c
+            sector = -1
+            T = b""
+            for i in range(offset, offset + len(ciphertext), 16):
+                c = ciphertext[i - offset : i - offset + 16]
 
-        return plaintext
+                if i // sector_size != sector:
+                    sector = i // sector_size
+                    T = C2.encrypt((i // 512).to_bytes(16, "little"))
+
+                    for j in range(0, (i % sector_size) // 16):
+                        T = gma(T)
+
+                c = bytes([x ^ y for x, y in zip(c, T)])
+                c = C1.decrypt(c)
+                c = bytes([x ^ y for x, y in zip(c, T)])
+                T = gma(T)
+
+                plaintext += c
+
+            return plaintext
 
     return decrypt
 

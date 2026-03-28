@@ -30,7 +30,8 @@ ruminant = "ruminant.main:main"
 recommended = [
   "tqdm",
   "pyzstd",
-  "backports.zstd"
+  "backports.zstd",
+  "cryptography"
 ]
 dev = [
   "flake8"
