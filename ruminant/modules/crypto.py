@@ -494,7 +494,7 @@ class LuksModule(module.RuminantModule):
                                 ),
                             )
 
-                            segment["data"] = chew(buf, blob_mode=True)
+                            segment["data"] = chew(buf)
 
                 self.buf.seek(m)
             case _:

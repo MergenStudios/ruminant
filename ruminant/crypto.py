@@ -256,7 +256,7 @@ def aes_xts_plain64(K1, K2, sector_size):
         sector = -1
         T = b""
         for i in range(offset, offset + len(ciphertext), 16):
-            c = ciphertext[i : i + 16]
+            c = ciphertext[i - offset : i - offset + 16]
 
             if i // sector_size != sector:
                 sector = i // sector_size
@@ -289,7 +289,7 @@ class CryptoBuf(object):
         file.seek(0)
 
         self._cache = {}
-        self._page_size = 2**20
+        self._page_size = 65536
 
     def read(self, size=-1):
         if size == -1:
@@ -307,6 +307,7 @@ class CryptoBuf(object):
             data += self._cache[page]
 
         self._file.seek(pos + size)
+
         return data[pos % self._page_size : (pos % self._page_size) + size]
 
     def _decrypt(self, page):
