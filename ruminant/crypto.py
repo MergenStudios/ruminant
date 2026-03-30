@@ -1,4 +1,7 @@
 import os
+import hashlib
+import math
+import hmac
 
 try:
     if "RUMINANT_NATIVE_MODE" in os.environ:
@@ -10,7 +13,7 @@ try:
         class AES:
             def __init__(self, key):
                 assert len(key) in (16, 24, 32), "Unknown AES key length"
-                self.cipher = Cipher(algorithms.AES(key), modes.ECV())
+                self.cipher = Cipher(algorithms.AES(key), modes.ECB())
 
             def encrypt(self, block):
                 encryptor = self.cipher.encryptor()
@@ -358,3 +361,144 @@ class CryptoBuf(object):
 
     def __getattr__(self, name):
         return getattr(self._file, name)
+
+
+def poly1305(msg, key):
+    P = (1 << 130) - 5
+
+    assert len(key) == 32, "invalid key length"
+
+    r_bytes = bytearray(key[0:16])
+    s_bytes = key[16:32]
+
+    r_bytes[3] &= 15
+    r_bytes[7] &= 15
+    r_bytes[11] &= 15
+    r_bytes[15] &= 15
+    r_bytes[4] &= 252
+    r_bytes[8] &= 252
+    r_bytes[12] &= 252
+
+    r = int.from_bytes(r_bytes, "little")
+    s = int.from_bytes(s_bytes, "little")
+
+    a = 0
+
+    for i in range(0, len(msg), 16):
+        block = msg[i : i + 16]
+        a = ((a + int.from_bytes(block, "little") + (1 << (8 * len(block)))) * r) % P
+
+    a += s
+    a %= 1 << 128
+
+    return a.to_bytes(16, "little")
+
+
+def rotl(a, b):
+    return ((a << b) & 0xffffffff) | (a >> (32 - b))
+
+
+def chacha_qr(x, a, b, c, d):
+    x[a] = (x[a] + x[b]) & 0xffffffff
+    x[d] ^= x[a]
+    x[d] = rotl(x[d], 16)
+    x[c] = (x[c] + x[d]) & 0xffffffff
+    x[b] ^= x[c]
+    x[b] = rotl(x[b], 12)
+    x[a] = (x[a] + x[b]) & 0xffffffff
+    x[d] ^= x[a]
+    x[d] = rotl(x[d], 8)
+    x[c] = (x[c] + x[d]) & 0xffffffff
+    x[b] ^= x[c]
+    x[b] = rotl(x[b], 7)
+
+
+def chacha_block(input_state):
+    x = []
+    for i in range(0, 64, 4):
+        x.append(int.from_bytes(input_state[i : i + 4], "little"))
+    y = list(x)
+
+    for _ in range(0, 20, 2):
+        chacha_qr(x, 0, 4, 8, 12)
+        chacha_qr(x, 1, 5, 9, 13)
+        chacha_qr(x, 2, 6, 10, 14)
+        chacha_qr(x, 3, 7, 11, 15)
+        chacha_qr(x, 0, 5, 10, 15)
+        chacha_qr(x, 1, 6, 11, 12)
+        chacha_qr(x, 2, 7, 8, 13)
+        chacha_qr(x, 3, 4, 9, 14)
+
+    x = [(x[i] + y[i]) & 0xffffffff for i in range(16)]
+    out = b""
+    for i in x:
+        out += i.to_bytes(4, "little")
+
+    return out
+
+
+def chacha20(msg, key, nonce, counter=1):
+    assert len(key) == 32, "invalid key length"
+    assert len(nonce) in (8, 12), "invalid nonce length"
+
+    ks = b""
+
+    if len(nonce) == 8:
+        for i in range(counter, (len(msg) + 63) // 64 + counter):
+            ks += chacha_block(
+                b"expand 32-byte k" + key + i.to_bytes(8, "little") + nonce
+            )
+    else:
+        for i in range(counter, (len(msg) + 63) // 64 + counter):
+            ks += chacha_block(
+                b"expand 32-byte k" + key + i.to_bytes(4, "little") + nonce
+            )
+
+    return bytes([x ^ k for x, k in zip(msg, ks[: len(msg)])])
+
+
+def chacha20_poly1305(msg, key, nonce, tag, aad=b""):
+    assert len(tag) == 16, "invalid tag length"
+
+    # lower throws asserts already
+    poly1305_key = chacha20(bytes(32), key, nonce, counter=0)
+
+    mac_data = b""
+    mac_data += aad
+    if len(mac_data) % 16 != 0:
+        mac_data += bytes(16 - len(mac_data) % 16)
+    mac_data += msg
+    if len(mac_data) % 16 != 0:
+        mac_data += bytes(16 - len(mac_data) % 16)
+    mac_data += len(aad).to_bytes(8, "little")
+    mac_data += len(msg).to_bytes(8, "little")
+
+    assert poly1305(mac_data, poly1305_key) == tag, "tag mismatch"
+
+    return chacha20(msg, key, nonce)
+
+
+def hkdf_extract(salt, ikm):
+    if salt is None or len(salt) == 0:
+        salt = bytes([0] * hashlib.sha256().digest_size)
+    return hmac.new(salt, ikm, hashlib.sha256).digest()
+
+
+def hkdf_expand(prk, info, length):
+    hash_len = hashlib.sha256().digest_size
+    assert length <= 255 * hash_len, "invalid length"
+
+    t = b""
+    okm = b""
+    n = math.ceil(length / hash_len)
+
+    for i in range(1, n + 1):
+        t = hmac.new(prk, t + info + bytes([i]), hashlib.sha256).digest()
+        okm += t
+
+    return okm[:length]
+
+
+def hkdf_sha256(ikm, length, salt=b"", info=b""):
+    prk = hkdf_extract(salt, ikm)
+    return hkdf_expand(prk, info, length)

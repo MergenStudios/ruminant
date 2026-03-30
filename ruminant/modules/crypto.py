@@ -5,6 +5,7 @@ from . import chew
 import base64
 import hashlib
 import json
+import hmac
 
 
 @module.register
@@ -43,6 +44,7 @@ class PemModule(module.RuminantModule):
             or buf.peek(26) == b"-----BEGIN PUBLIC KEY-----"
             or buf.peek(27) == b"-----BEGIN PRIVATE KEY-----"
             or buf.peek(30) == b"-----BEGIN EC PRIVATE KEY-----"
+            or buf.peek(37) == b"-----BEGIN ENCRYPTED PRIVATE KEY-----"
         )
 
     def chew(self):
@@ -320,6 +322,7 @@ class AgeModule(module.RuminantModule):
         self.buf.skip(20)
         meta["data"]["version"] = int(self.buf.rl())
 
+        header_length = None
         match meta["data"]["version"]:
             case 1:
                 meta["data"]["stanzas"] = []
@@ -327,11 +330,13 @@ class AgeModule(module.RuminantModule):
                 while True:
                     stanza = {}
 
+                    pos = self.buf.tell()
                     line = self.buf.rl()
                     if line.startswith(b"---"):
-                        meta["data"]["header-mac"] = base64.b64decode(
-                            line[4:] + b"=="
-                        ).hex()
+                        header_length = pos + 3
+                        meta["data"]["header-mac"] = {
+                            "value": base64.b64decode(line[4:] + b"==").hex()
+                        }
                         break
 
                     stanza["type"] = utils.decode(line).split(" ")[1]
@@ -372,10 +377,96 @@ class AgeModule(module.RuminantModule):
 
                     meta["data"]["stanzas"].append(stanza)
 
-                meta["data"]["block-count"] = (self.buf.available() + 65536 + 15) // (
-                    65536 + 16
-                )
-                self.buf.skip(self.buf.available())
+                file_key = None
+                for stanza in meta["data"]["stanzas"]:
+                    match stanza["type"]:
+                        case "scrypt":
+                            data = stanza["wrapped-key"].encode("utf-8")
+                            for k, v in stanza["arguments"].items():
+                                data += len(k).to_bytes(4, "little") + k.encode("utf-8")
+
+                                match v.__class__.__name__:
+                                    case "int":
+                                        data += v.to_bytes(8, "little", signed=True)
+                                    case "str":
+                                        data += len(v).to_bytes(4, "little") + v.encode(
+                                            "utf-8"
+                                        )
+
+                            name = hashlib.sha256(data).hexdigest()
+                            key = secrets.get(name)
+
+                            stanza["key"] = {"name": name, "found": key is not None}
+
+                            if key is not None:
+                                wrap_key = hashlib.scrypt(
+                                    key.encode("utf-8"),
+                                    salt=b"age-encryption.org/v1/scrypt"
+                                    + bytes.fromhex(stanza["arguments"]["salt"]),
+                                    n=stanza["arguments"]["work"],
+                                    r=8,
+                                    p=1,
+                                    maxmem=2**31 - 1,
+                                    dklen=32,
+                                )
+                                stanza["wrap-key"] = wrap_key.hex()
+
+                                try:
+                                    file_key = crypto.chacha20_poly1305(
+                                        bytes.fromhex(stanza["wrapped-key"])[:-16],
+                                        wrap_key,
+                                        bytes(12),
+                                        bytes.fromhex(stanza["wrapped-key"])[-16:],
+                                    )
+                                    stanza["key"]["correct"] = True
+                                except AssertionError:
+                                    stanza["key"]["correct"] = False
+
+                nonce = self.buf.read(16)
+                meta["data"]["payload-nonce"] = nonce.hex()
+
+                if file_key is not None:
+                    meta["data"]["file-key"] = file_key.hex()
+                    with self.buf:
+                        self.buf.seek(0)
+                        header_key = crypto.hkdf_sha256(
+                            file_key, info=b"header", length=32
+                        )
+                        header_hmac = hmac.new(
+                            header_key, self.buf.read(header_length), hashlib.sha256
+                        ).hexdigest()
+                        meta["data"]["header-mac"]["correct"] = (
+                            meta["data"]["header-mac"]["value"] == header_hmac
+                        )
+                        if not meta["data"]["header-mac"]["correct"]:
+                            meta["data"]["header-mac"]["actual"] = header_hmac
+
+                    payload_key = crypto.hkdf_sha256(
+                        file_key, salt=nonce, info=b"payload", length=32
+                    )
+                    fd = utils.tempfd()
+                    counter = 0
+                    while self.buf.available() > 0:
+                        block = self.buf.read(min(65536 + 16, self.buf.available()))
+                        block, tag = block[:-16], block[-16:]
+                        block = crypto.chacha20_poly1305(
+                            block,
+                            payload_key,
+                            counter.to_bytes(11, "big")
+                            + (b"\x00" if self.buf.available() > 0 else b"\x01"),
+                            tag,
+                        )
+                        fd.write(block)
+                        counter += 1
+
+                    fd.seek(0)
+                    meta["data"]["payload"] = chew(fd)
+
+                else:
+                    meta["data"]["block-count"] = (
+                        self.buf.available() + 65536 + 15 - 16
+                    ) // (65536 + 16)
+                    self.buf.skip(self.buf.available())
             case _:
                 meta["unknown"] = True
 
