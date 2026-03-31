@@ -344,7 +344,7 @@ class AgeModule(module.RuminantModule):
                     args = utils.decode(line).split(" ")[2:]
                     match stanza["type"]:
                         case "X25519":
-                            stanza["arguments"]["ephemeral-share"] = args[0].hex()
+                            stanza["arguments"]["ephemeral-share"] = args[0]
                         case "scrypt":
                             stanza["arguments"]["salt"] = base64.b64decode(
                                 args[0] + "=="
@@ -380,6 +380,69 @@ class AgeModule(module.RuminantModule):
                 file_key = None
                 for stanza in meta["data"]["stanzas"]:
                     match stanza["type"]:
+                        case "X25519":
+                            name = hashlib.sha256(
+                                stanza["arguments"]["ephemeral-share"].encode("utf-8")
+                            ).hexdigest()
+                            key = secrets.get(name)
+
+                            stanza["key"] = {"name": name, "found": key is not None}
+                            if key is not None:
+                                if not crypto.bech32_verify_checksum(key):
+                                    stanza["key"]["correct"] = False
+                                else:
+                                    data_part = key.split("1")[-1][:-6].lower()
+                                    words = [
+                                        "qpzry9x8gf2tvdw0s3jn54khce6mua7l".find(c)
+                                        for c in data_part
+                                    ]
+                                    priv = bytes(
+                                        crypto.bech32_convertbits(
+                                            words, 5, 8, pad=False
+                                        )
+                                    )
+
+                                    pub = crypto.curve25519(b"\x09" + bytes(31), priv)
+                                    words = crypto.bech32_convertbits(pub, 8, 5)
+                                    checksum = crypto.bech32_create_checksum(
+                                        "age", words
+                                    )
+                                    encoded_data = "".join([
+                                        "qpzry9x8gf2tvdw0s3jn54khce6mua7l"[i]
+                                        for i in words + checksum
+                                    ])
+                                    recipient = "age1" + encoded_data
+                                    stanza["recipient"] = recipient
+
+                                    shared_secret = crypto.curve25519(
+                                        base64.b64decode(
+                                            stanza["arguments"]["ephemeral-share"]
+                                            + "==="
+                                        ),
+                                        priv,
+                                    )
+                                    wrap_key = crypto.hkdf_sha256(
+                                        shared_secret,
+                                        salt=base64.b64decode(
+                                            stanza["arguments"]["ephemeral-share"]
+                                            + "==="
+                                        )
+                                        + pub,
+                                        info=b"age-encryption.org/v1/X25519",
+                                        length=32,
+                                    )
+                                    stanza["wrap-key"] = wrap_key.hex()
+
+                                    try:
+                                        file_key = crypto.chacha20_poly1305(
+                                            bytes.fromhex(stanza["wrapped-key"])[:-16],
+                                            wrap_key,
+                                            bytes(12),
+                                            bytes.fromhex(stanza["wrapped-key"])[-16:],
+                                        )
+                                        stanza["key"]["correct"] = True
+                                    except AssertionError:
+                                        stanza["key"]["correct"] = False
                         case "scrypt":
                             data = stanza["wrapped-key"].encode("utf-8")
                             for k, v in stanza["arguments"].items():

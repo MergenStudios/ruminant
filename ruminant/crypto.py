@@ -502,3 +502,136 @@ def hkdf_expand(prk, info, length):
 def hkdf_sha256(ikm, length, salt=b"", info=b""):
     prk = hkdf_extract(salt, ikm)
     return hkdf_expand(prk, info, length)
+
+
+def bech32_polymod(values):
+    GEN = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3]
+    chk = 1
+    for v in values:
+        b = chk >> 25
+        chk = (chk & 0x1ffffff) << 5 ^ v
+        for i in range(5):
+            chk ^= GEN[i] if ((b >> i) & 1) else 0
+    return chk
+
+
+def bech32_hrp_expand(s):
+    return [ord(x) >> 5 for x in s] + [0] + [ord(x) & 31 for x in s]
+
+
+def bech32_verify_checksum(data):
+    data = data.lower()
+    hrp = "1".join(data.split("1")[:-1])
+    data = [
+        {
+            "q": 0,
+            "p": 1,
+            "z": 2,
+            "r": 3,
+            "y": 4,
+            "9": 5,
+            "x": 6,
+            "8": 7,
+            "g": 8,
+            "f": 9,
+            "2": 10,
+            "t": 11,
+            "v": 12,
+            "d": 13,
+            "w": 14,
+            "0": 15,
+            "s": 16,
+            "3": 17,
+            "j": 18,
+            "n": 19,
+            "5": 20,
+            "4": 21,
+            "k": 22,
+            "h": 23,
+            "c": 24,
+            "e": 25,
+            "6": 26,
+            "m": 27,
+            "u": 28,
+            "a": 29,
+            "7": 30,
+            "l": 31,
+        }.get(x, 0)
+        for x in data.split("1")[-1]
+    ]
+
+    return bech32_polymod(bech32_hrp_expand(hrp) + data) == 1
+
+
+def bech32_create_checksum(hrp, data):
+    values = bech32_hrp_expand(hrp) + data
+    polymod = bech32_polymod(values + [0, 0, 0, 0, 0, 0]) ^ 1
+    return [(polymod >> 5 * (5 - i)) & 31 for i in range(6)]
+
+
+def bech32_convertbits(data, frombits, tobits, pad=True):
+    acc = 0
+    bits = 0
+    ret = []
+    maxv = (1 << tobits) - 1
+    for value in data:
+        acc = (acc << frombits) | value
+        bits += frombits
+        while bits >= tobits:
+            bits -= tobits
+            ret.append((acc >> bits) & maxv)
+    if pad:
+        if bits:
+            ret.append((acc << (tobits - bits)) & maxv)
+    return ret
+
+
+def curve25519(base, scalar):
+    P = 2**255 - 19
+
+    assert len(base) == 32, "invalid base point length"
+    assert len(scalar) == 32, "invalid scalar length"
+
+    def point_add(point_n, point_m, point_diff):
+        (xn, zn) = point_n
+        (xm, zm) = point_m
+        (x_diff, z_diff) = point_diff
+        x = (z_diff << 2) * (xm * xn - zm * zn) ** 2
+        z = (x_diff << 2) * (xm * zn - zm * xn) ** 2
+        return x % P, z % P
+
+    def point_double(point_n):
+        (xn, zn) = point_n
+        xn2 = xn**2
+        zn2 = zn**2
+        x = (xn2 - zn2) ** 2
+        xzn = xn * zn
+        z = 4 * xzn * (xn2 + 486662 * xzn + zn2)
+        return x % P, z % P
+
+    def const_time_swap(a, b, swap):
+        """Swap two values in constant time"""
+        index = int(swap) * 2
+        temp = (a, b, b, a)
+        return temp[index : index + 2]
+
+    def _curve25519(base, n):
+        """Raise the point base to the power n"""
+        zero = (1, 0)
+        one = (base, 1)
+        mP, m1P = zero, one
+
+        for i in reversed(range(256)):
+            bit = bool(n & (1 << i))
+            mP, m1P = const_time_swap(mP, m1P, bit)
+            mP, m1P = point_double(mP), point_add(mP, m1P, one)
+            mP, m1P = const_time_swap(mP, m1P, bit)
+
+        x, z = mP
+        inv_z = pow(z, P - 2, P)
+        return (x * inv_z) % P
+
+    base = int.from_bytes(base, "little")
+    secret = int.from_bytes(scalar, "little") & ~7 & ~(128 << 8 * 31) | (64 << 8 * 31)
+
+    return _curve25519(base, secret).to_bytes(32, "little")
