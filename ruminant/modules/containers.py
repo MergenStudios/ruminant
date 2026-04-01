@@ -1741,3 +1741,406 @@ class IwaModule(module.RuminantModule):
         self.clean(meta["data"])
 
         return meta
+
+
+@module.register
+class PcapNgModule(module.RuminantModule):
+    desc = "pcapng files as produced by Wireshark."
+
+    def identify(buf, ctx):
+        return buf.peek(4) == b"\x0a\x0d\x0d\x0a"
+
+    def read_options(self, ctx):
+        if self.buf.unit <= 4:
+            return []
+
+        opts = []
+        while True:
+            if self.buf.pu32() == 0:
+                self.buf.skip(4)
+                return opts
+
+            opt = {}
+            opt["type"] = utils.unraw(
+                self.buf.ru16l() if self.little else self.buf.ru16(),
+                2,
+                {
+                    "Section Header": {
+                        0x0002: "Hardware",
+                        0x0003: "OS",
+                        0x0004: "User application",
+                    },
+                    "Interface Description": {
+                        0x0002: "Interface",
+                        0x0009: "Timestamp resolution",
+                        0x000c: "OS",
+                    },
+                    "Interface Statistics": {
+                        0x0001: "Writer",
+                        0x0002: "Start time",
+                        0x0003: "End time",
+                        0x0004: "Interface received",
+                        0x0005: "Interface dropped",
+                    },
+                }.get(ctx, {}),
+                True,
+            )
+            opt["length"] = self.buf.ru16l() if self.little else self.buf.ru16()
+
+            self.buf.pasunit(opt["length"])
+
+            match ctx, opt["type"]:
+                case (
+                    ("Section Header", "Hardware" | "OS" | "User application")
+                    | (
+                        "Interface Description",
+                        "Interface" | "OS",
+                    )
+                    | ("Interface Statistics", "Writer")
+                ):
+                    opt["data"] = self.buf.rs(self.buf.unit)
+                case "Interface Description", "Timestamp resolution":
+                    temp = self.buf.ru8()
+                    opt["data"] = {
+                        "base": 2 if temp & 0x80 else 10,
+                        "exponent": -(temp & 0x7f),
+                        "value": (2 if temp & 0x80 else 10) ** -(temp & 0x7f),
+                    }
+                case (
+                    "Interface Statistics",
+                    "Start time"
+                    | "End time"
+                    | "Interface received"
+                    | "Interface dropped",
+                ):
+                    opt["data"] = self.buf.ru32l() if self.little else self.buf.ru32()
+                case _:
+                    opt["data"] = self.buf.rh(self.buf.unit)
+                    opt["unknown"] = True
+
+            self.buf.sapunit()
+            if self.buf.tell() % 4 != 0:
+                self.buf.skip(4 - self.buf.tell() % 4)
+
+            opts.append(opt)
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "pcapng"
+
+        meta["sections"] = []
+
+        while self.buf.available() > 0:
+            section = {}
+            section["offset"] = self.buf.tell()
+
+            self.buf.skip(8)
+            self.little = self.buf.ru32l() == 0x1a2b3c4d
+            self.buf.seek(self.buf.tell() - 8)
+
+            section["header"] = {}
+            section["header"]["length"] = (
+                self.buf.ru32l() if self.little else self.buf.ru32()
+            )
+            self.buf.pasunit(section["header"]["length"] - 8)
+
+            section["header"]["little-endian"] = self.buf.ru32l() == 0x1a2b3c4d
+            section["header"]["version"] = (
+                f"{self.buf.ru16l() if self.little else self.buf.ru16()}.{self.buf.ru16l() if self.little else self.buf.ru16()}"
+            )
+            size = self.buf.ri64l() if self.little else self.buf.ri64()
+            section["header"]["section-length"] = size
+
+            if size == -1:
+                size = self.buf.size() - section["offset"]
+
+            section["header"]["options"] = self.read_options("Section Header")
+
+            section["header"]["trailer-length"] = (
+                self.buf.ru32l() if self.little else self.buf.ru32()
+            )
+
+            self.buf.sapunit()
+
+            # body
+            self.buf.pasunit(size - (self.buf.tell() - section["offset"]))
+
+            section["blocks"] = []
+
+            while self.buf.unit > 0:
+                block = {}
+                block["type"] = utils.unraw(
+                    self.buf.ru32l() if self.little else self.buf.ru32(),
+                    4,
+                    {
+                        0x00000001: "Interface Description",
+                        0x00000005: "Interface Statistics",
+                        0x00000006: "Enhanced Packet",
+                    },
+                    True,
+                )
+                block["length"] = self.buf.ru32l() if self.little else self.buf.ru32()
+
+                self.buf.pasunit(block["length"] - 8)
+
+                block["data"] = {}
+                match block["type"]:
+                    case "Interface Description":
+                        # https://www.tcpdump.org/linktypes.html
+                        block["data"]["link-type"] = utils.unraw(
+                            self.buf.ru16l() if self.little else self.buf.ru16(),
+                            2,
+                            {
+                                0x0000: "NULL",
+                                0x0001: "ETHERNET",
+                                0x0002: "EXP_ETHERNET",
+                                0x0003: "AX25",
+                                0x0004: "PRONET",
+                                0x0005: "CHAOS",
+                                0x0006: "IEEE802_5",
+                                0x0007: "ARCNET_BSD",
+                                0x0008: "SLIP",
+                                0x0009: "PPP",
+                                0x000a: "FDDI",
+                                0x0020: "DLT_REDBACK_SMARTEDGE",
+                                0x0032: "PPP_HDLC",
+                                0x0033: "PPP_ETHER",
+                                0x0063: "SYMANTEC_FIREWALL",
+                                0x0064: "ATM_RFC1483",
+                                0x0065: "RAW",
+                                0x0066: "SLIP_BSDOS",
+                                0x0067: "PPP_BSDOS",
+                                0x0068: "C_HDLC",
+                                0x0069: "IEEE802_11",
+                                0x006a: "ATM_CLIP",
+                                0x006b: "FRELAY",
+                                0x006c: "LOOP",
+                                0x006d: "ENC",
+                                0x006e: "LANE8023",
+                                0x006f: "HIPPI",
+                                0x0070: "NETBSD_HDLC",
+                                0x0071: "LINUX_SLL",
+                                0x0072: "LTALK",
+                                0x0073: "DLT_ECONET",
+                                0x0074: "DLT_IPFILTER",
+                                0x0075: "PFLOG",
+                                0x0076: "DLT_CISCO_IOS",
+                                0x0077: "IEEE802_11_PRISM",
+                                0x0078: "DLT_AIRONET_HEADER",
+                                0x007a: "IP_OVER_FC",
+                                0x007b: "SUNATM",
+                                0x007c: "DLT_RIO",
+                                0x007d: "DLT_PCI_EXP",
+                                0x007e: "DLT_AURORA",
+                                0x007f: "IEEE802_11_RADIOTAP",
+                                0x0080: "TZSP",
+                                0x0081: "ARCNET_LINUX",
+                                0x0082: "JUNIPER_MLPPP",
+                                0x0083: "JUNIPER_MLFR",
+                                0x0084: "JUNIPER_ES",
+                                0x0085: "JUNIPER_GGSN",
+                                0x0086: "JUNIPER_MFR",
+                                0x0087: "JUNIPER_ATM2",
+                                0x0088: "JUNIPER_SERVICES",
+                                0x0089: "JUNIPER_ATM1",
+                                0x008a: "APPLE_IP_OVER_IEEE1394",
+                                0x008b: "MTP2_WITH_PHDR",
+                                0x008c: "MTP2",
+                                0x008d: "MTP3",
+                                0x008e: "SCCP",
+                                0x008f: "DOCSIS",
+                                0x0090: "LINUX_IRDA",
+                                0x0091: "IBM_SP",
+                                0x0092: "IBM_SN",
+                                0x00a3: "IEEE802_11_AVS",
+                                0x00a4: "JUNIPER_MONITOR",
+                                0x00a5: "BACNET_MS_TP",
+                                0x00a6: "PPP_PPPD",
+                                0x00a7: "JUNIPER_PPPOE",
+                                0x00a8: "JUNIPER_PPPOE_ATM",
+                                0x00a9: "GPRS_LLC",
+                                0x00aa: "GPF_T",
+                                0x00ab: "GPF_F",
+                                0x00ac: "GCOM_T1E1",
+                                0x00ad: "GCOM_SERIAL",
+                                0x00ae: "JUNIPER_PIC_PEER",
+                                0x00af: "ERF_ETH",
+                                0x00b0: "ERF_POS",
+                                0x00b1: "LINUX_LAPD",
+                                0x00b2: "JUNIPER_ETHER",
+                                0x00b3: "JUNIPER_PPP",
+                                0x00b4: "JUNIPER_FRELAY",
+                                0x00b5: "JUNIPER_CHDLC",
+                                0x00b6: "MFR",
+                                0x00b7: "JUNIPER_VP",
+                                0x00b8: "A429",
+                                0x00b9: "A653_ICM",
+                                0x00ba: "USB_FREEBSD",
+                                0x00bb: "BLUETOOTH_HCI_H4",
+                                0x00bc: "IEEE802_16_MAC_CPS",
+                                0x00bd: "USB_LINUX",
+                                0x00be: "CAN20B",
+                                0x00bf: "IEEE802_15_4_LINUX",
+                                0x00c0: "PPI",
+                                0x00c1: "IEEE802_16_MAC_CPS_RADIO",
+                                0x00c2: "JUNIPER_ISM",
+                                0x00c3: "IEEE802_15_4_WITHFCS",
+                                0x00c4: "SITA",
+                                0x00c5: "ERF",
+                                0x00c6: "RAIF1",
+                                0x00c7: "IPMB_KONTRON",
+                                0x00c8: "JUNIPER_ST",
+                                0x00c9: "BLUETOOTH_HCI_H4_WITH_PHDR",
+                                0x00ca: "AX25_KISS",
+                                0x00cb: "LAPD",
+                                0x00cc: "PPP_WITH_DIR",
+                                0x00cd: "C_HDLC_WITH_DIR",
+                                0x00ce: "FRELAY_WITH_DIR",
+                                0x00cf: "LAPB_WITH_DIR",
+                                0x00d1: "I2C_LINUX",
+                                0x00d2: "FLEXRAY",
+                                0x00d3: "MOST",
+                                0x00d4: "LIN",
+                                0x00d5: "X2E_SERIAL",
+                                0x00d6: "X2E_XORAYA",
+                                0x00d7: "IEEE802_15_4_NONASK_PHY",
+                                0x00d8: "LINUX_EVDEV",
+                                0x00d9: "GSMTAP_UM",
+                                0x00da: "GSMTAP_ABIS",
+                                0x00db: "MPLS",
+                                0x00dc: "USB_LINUX_MMAPPED",
+                                0x00dd: "DECT",
+                                0x00de: "AOS",
+                                0x00df: "WIHART",
+                                0x00e0: "FC_2",
+                                0x00e1: "FC_2_WITH_FRAME_DELIMS",
+                                0x00e2: "IPNET",
+                                0x00e3: "CAN_SOCKETCAN",
+                                0x00e4: "IPV4",
+                                0x00e5: "IPV6",
+                                0x00e6: "IEEE802_15_4_NOFCS",
+                                0x00e7: "DBUS",
+                                0x00e8: "JUNIPER_VS",
+                                0x00e9: "JUNIPER_SRX_E2E",
+                                0x00ea: "JUNIPER_FIBRECHANNEL",
+                                0x00eb: "DVB_CI",
+                                0x00ec: "MUX27010",
+                                0x00ed: "STANAG_5066_D_PDU",
+                                0x00ee: "JUNIPER_ATM_CEMIC",
+                                0x00ef: "NFLOG",
+                                0x00f0: "NETANALYZER",
+                                0x00f1: "NETANALYZER_TRANSPARENT",
+                                0x00f2: "IPOIB",
+                                0x00f3: "MPEG_2_TS",
+                                0x00f4: "NG40",
+                                0x00f5: "NFC_LLCP",
+                                0x00f6: "PFSYNC",
+                                0x00f7: "INFINIBAND",
+                                0x00f8: "SCTP",
+                                0x00f9: "USBPCAP",
+                                0x00fa: "RTAC_SERIAL",
+                                0x00fb: "BLUETOOTH_LE_LL",
+                                0x00fc: "WIRESHARK_UPPER_PDU",
+                                0x00fd: "NETLINK",
+                                0x00fe: "BLUETOOTH_LINUX_MONITOR",
+                                0x00ff: "BLUETOOTH_BREDR_BB",
+                                0x0100: "BLUETOOTH_LE_LL_WITH_PHDR",
+                                0x0101: "PROFIBUS_DL",
+                                0x0102: "PKTAP",
+                                0x0103: "EPON",
+                                0x0104: "IPMI_HPM_2",
+                                0x0105: "ZWAVE_R1_R2",
+                                0x0106: "ZWAVE_R3",
+                                0x0107: "WATTSTOPPER_DLM",
+                                0x0108: "ISO_14443",
+                                0x0109: "RDS",
+                                0x010a: "USB_DARWIN",
+                                0x010b: "OPENFLOW",
+                                0x010c: "SDLC",
+                                0x010d: "TI_LLN_SNIFFER",
+                                0x010e: "LORATAP",
+                                0x010f: "VSOCK",
+                                0x0110: "NORDIC_BLE",
+                                0x0111: "DOCSIS31_XRA31",
+                                0x0112: "ETHERNET_MPACKET",
+                                0x0113: "DISPLAYPORT_AUX",
+                                0x0114: "LINUX_SLL2",
+                                0x0115: "SERCOS_MONITOR",
+                                0x0116: "OPENVIZSLA",
+                                0x0117: "EBHSCR",
+                                0x0118: "VPP_DISPATCH",
+                                0x0119: "DSA_TAG_BRCM",
+                                0x011a: "DSA_TAG_BRCM_PREPEND",
+                                0x011b: "IEEE802_15_4_TAP",
+                                0x011c: "DSA_TAG_DSA",
+                                0x011d: "DSA_TAG_EDSA",
+                                0x011e: "ELEE",
+                                0x011f: "Z_WAVE_SERIAL",
+                                0x0120: "USB_2_0",
+                                0x0121: "ATSC_ALP",
+                                0x0122: "ETW",
+                                0x0123: "NETANALYZER_NG",
+                                0x0124: "ZBOSS_NCP",
+                                0x0125: "USB_2_0_LOW_SPEED",
+                                0x0126: "USB_2_0_FULL_SPEED",
+                                0x0127: "USB_2_0_HIGH_SPEED",
+                                0x0128: "AUERSWALD_LOG",
+                                0x0129: "ZWAVE_TAP",
+                                0x012a: "SILABS_DEBUG_CHANNEL",
+                                0x012b: "FIRA_UCI",
+                                0x012c: "MDB",
+                                0x012d: "DECT_NR",
+                                0x012e: "EDK2_MM",
+                                0x012f: "DEBUG_ONLY",
+                            },
+                            True,
+                        )
+                        block["data"]["reserved"] = self.buf.rh(2)
+                        block["data"]["snap-length"] = (
+                            self.buf.ru32l() if self.little else self.buf.ru32()
+                        )
+                    case "Enhanced Packet":
+                        block["data"]["interface-id"] = (
+                            self.buf.ru32l() if self.little else self.buf.ru32()
+                        )
+                        temp = self.buf.ru32l() if self.little else self.buf.ru32()
+                        block["data"]["timestamp"] = (temp << 32) | (
+                            self.buf.ru32l() if self.little else self.buf.ru32()
+                        )
+                        block["data"]["captured-packet-length"] = (
+                            self.buf.ru32l() if self.little else self.buf.ru32()
+                        )
+                        block["data"]["original-packet-length"] = (
+                            self.buf.ru32l() if self.little else self.buf.ru32()
+                        )
+                        block["data"]["packet"] = self.buf.rh(
+                            block["data"]["captured-packet-length"]
+                        )
+                    case "Interface Statistics":
+                        block["data"]["interface-id"] = (
+                            self.buf.ru32l() if self.little else self.buf.ru32()
+                        )
+                        temp = self.buf.ru32l() if self.little else self.buf.ru32()
+                        block["data"]["timestamp"] = (temp << 32) | (
+                            self.buf.ru32l() if self.little else self.buf.ru32()
+                        )
+                    case _:
+                        block["unknown"] = True
+
+                if self.buf.tell() % 4 != 0:
+                    self.buf.skip(4 - self.buf.tell() % 4)
+
+                if "unknown" not in block:
+                    block["options"] = self.read_options(block["type"])
+                    block["trailer-length"] = (
+                        self.buf.ru32l() if self.little else self.buf.ru32()
+                    )
+
+                self.buf.sapunit()
+                section["blocks"].append(block)
+
+            self.buf.sapunit()
+
+            meta["sections"].append(section)
+
+        return meta
