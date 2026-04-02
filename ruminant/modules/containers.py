@@ -1931,6 +1931,9 @@ class PcapNgModule(module.RuminantModule):
                 1,
                 {
                     0x01: "No operation",
+                    0x02: "Maximum segment size",
+                    0x03: "Window scale",
+                    0x04: "Selective Acknowledgement permitted",
                     0x08: "Timestamp and echo of previous timestamp",
                 },
                 True,
@@ -1939,6 +1942,14 @@ class PcapNgModule(module.RuminantModule):
             match opt["type"]:
                 case "No operation":
                     pass
+                case "Maximum segment size":
+                    self.buf.skip(1)
+                    opt["segment-size"] = self.buf.ru16()
+                case "Window scale":
+                    self.buf.skip(1)
+                    opt["window-scale"] = self.buf.ru8()
+                case "Selective Acknowledgement permitted":
+                    self.buf.skip(1)
                 case "Timestamp and echo of previous timestamp":
                     self.buf.skip(1)
                     opt["tsval"] = self.buf.ru32()
@@ -1989,7 +2000,7 @@ class PcapNgModule(module.RuminantModule):
         packet["flow-label"] = self.buf.rb(20)
         packet["payload-length"] = self.buf.ru16()
 
-        self.buf.pasunit(packet["payload-length"] - 6)
+        self.buf.pasunit(packet["payload-length"] - 6 + 40)
 
         packet["next-header"] = self.buf.ru8()
         packet["hop-limit"] = self.buf.ru8()
@@ -2001,15 +2012,37 @@ class PcapNgModule(module.RuminantModule):
         should_break = False
         while not should_break:
             hdr = {}
-            hdr["type"] = utils.unraw(next_type, 1, {0x3a: "ICMPv6"}, True)
+            hdr["type"] = utils.unraw(
+                next_type,
+                1,
+                {
+                    0x01: "ICMP",
+                    0x02: "IGMP",
+                    0x06: "TCP",
+                    0x11: "UDP",
+                    0x29: "ENCAP",
+                    0x3a: "ICMPv6",
+                    0x59: "OSPF",
+                    0x84: "SCTP",
+                },
+                True,
+            )
 
             match hdr["type"]:
                 case "ICMPv6":
                     hdr["payload"] = self.read_icmpv6()
                     should_break = True
+                case "UDP":
+                    hdr["payload"] = self.read_udp()
+                    should_break = True
+                case "TCP":
+                    hdr["payload"] = self.read_tcp()
+                    should_break = True
+                case "ICMP":
+                    hdr["payload"] = self.read_icmp()
+                    should_break = True
                 case _:
                     hdr["unknown"] = True
-                    packet["headers"].append(hdr)
                     should_break = True
 
             packet["headers"].append(hdr)
