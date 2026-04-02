@@ -1772,6 +1772,7 @@ class PcapNgModule(module.RuminantModule):
                     },
                     "Interface Description": {
                         0x0002: "Interface",
+                        0x0003: "Description",
                         0x0009: "Timestamp resolution",
                         0x000c: "OS",
                     },
@@ -1794,7 +1795,7 @@ class PcapNgModule(module.RuminantModule):
                     ("Section Header", "Hardware" | "OS" | "User application")
                     | (
                         "Interface Description",
-                        "Interface" | "OS",
+                        "Interface" | "Description" | "OS",
                     )
                     | ("Interface Statistics", "Writer")
                 ):
@@ -1872,6 +1873,8 @@ class PcapNgModule(module.RuminantModule):
                     packet["payload"] = self.read_udp()
                 case "TCP":
                     packet["payload"] = self.read_tcp()
+                case "ICMP":
+                    packet["payload"] = self.read_icmp()
                 case _:
                     packet["payload"] = self.buf.rh(self.buf.unit)
                     packet["unknown"] = True
@@ -1948,6 +1951,103 @@ class PcapNgModule(module.RuminantModule):
         self.buf.sapunit()
 
         packet["payload"] = self.buf.rh(self.buf.unit)
+
+        return packet
+
+    def read_icmp(self):
+        packet = {}
+        packet["type"] = utils.unraw(
+            self.buf.ru8(), 1, {0x00: "Echo Reply", 0x08: "Echo Request"}, True
+        )
+        packet["code"] = utils.unraw(
+            self.buf.ru8(),
+            1,
+            {
+                "Echo Request": {0x00: "Echo Request"},
+                "Echo Reply": {0x00: "Echo Reply"},
+            }.get(packet["type"], {}),
+            True,
+        )
+        packet["checksum"] = self.buf.ru16()
+
+        match packet["type"], packet["code"]:
+            case ("Echo Request", "Echo Request") | ("Echo Reply", "Echo Reply"):
+                packet["identifier"] = self.buf.ru16()
+                packet["sequence-number"] = self.buf.ru16()
+                packet["payload"] = self.buf.rh(self.buf.unit)
+            case _, _:
+                packet["rest"] = self.buf.ru32()
+                packet["payload"] = self.buf.rh(self.buf.unit)
+                packet["unknown"] = True
+
+        return packet
+
+    def read_ipv6(self):
+        packet = {}
+        packet["version"] = self.buf.rb(4)
+        packet["traffic-class"] = self.buf.rb(8)
+        packet["flow-label"] = self.buf.rb(20)
+        packet["payload-length"] = self.buf.ru16()
+
+        self.buf.pasunit(packet["payload-length"] - 6)
+
+        packet["next-header"] = self.buf.ru8()
+        packet["hop-limit"] = self.buf.ru8()
+        packet["source-address"] = self.buf.rh(16)
+        packet["destination-address"] = self.buf.rh(16)
+
+        next_type = packet["next-header"]
+        packet["headers"] = []
+        should_break = False
+        while not should_break:
+            hdr = {}
+            hdr["type"] = utils.unraw(next_type, 1, {0x3a: "ICMPv6"}, True)
+
+            match hdr["type"]:
+                case "ICMPv6":
+                    hdr["payload"] = self.read_icmpv6()
+                    should_break = True
+                case _:
+                    hdr["unknown"] = True
+                    packet["headers"].append(hdr)
+                    should_break = True
+
+            packet["headers"].append(hdr)
+
+        self.buf.sapunit()
+
+        return packet
+
+    def read_icmpv6(self):
+        packet = {}
+        packet["type"] = utils.unraw(
+            self.buf.ru8(),
+            1,
+            {
+                0x80: "Echo Request",
+                0x81: "Echo Reply",
+            },
+            True,
+        )
+        packet["code"] = utils.unraw(
+            self.buf.ru8(),
+            1,
+            {
+                "Echo Request": {0x00: "Echo Request"},
+                "Echo Reply": {0x00: "Echo Reply"},
+            }.get(packet["type"], {}),
+            True,
+        )
+        packet["checksum"] = self.buf.ru16()
+
+        match packet["type"], packet["code"]:
+            case ("Echo Request", "Echo Request") | ("Echo Reply", "Echo Reply"):
+                packet["identifier"] = self.buf.ru16()
+                packet["sequence-number"] = self.buf.ru16()
+                packet["payload"] = self.buf.rh(self.buf.unit)
+            case _, _:
+                packet["payload"] = self.buf.rh(self.buf.unit)
+                packet["unknown"] = True
 
         return packet
 
@@ -2256,7 +2356,7 @@ class PcapNgModule(module.RuminantModule):
                                 block["data"]["packet"]["ethertype"] = utils.unraw(
                                     self.buf.ru16(),
                                     2,
-                                    {0x0800: "IPv4", 0x0806: "ARP", 0x08dd: "IPv6"},
+                                    {0x0800: "IPv4", 0x0806: "ARP", 0x86dd: "IPv6"},
                                     True,
                                 )
 
@@ -2266,6 +2366,10 @@ class PcapNgModule(module.RuminantModule):
                                     case "IPv4":
                                         block["data"]["packet"]["payload"] = (
                                             self.read_ipv4()
+                                        )
+                                    case "IPv6":
+                                        block["data"]["packet"]["payload"] = (
+                                            self.read_ipv6()
                                         )
                                     case _:
                                         block["data"]["packet"]["payload"] = (
