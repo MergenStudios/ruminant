@@ -1824,6 +1824,133 @@ class PcapNgModule(module.RuminantModule):
 
             opts.append(opt)
 
+    def read_ipv4(self):
+        packet = {}
+        packet["version"] = self.buf.rb(4)
+        packet["header-length"] = self.buf.rb(4) * 4
+        self.buf.pasunit(packet["header-length"] - 1)
+
+        packet["dscp"] = self.buf.rb(6)
+        packet["ecn"] = self.buf.rb(2)
+        packet["total-length"] = self.buf.ru16()
+        packet["identification"] = self.buf.ru16()
+        packet["reserved"] = self.buf.rb(1)
+        packet["dont-fragment"] = bool(self.buf.rb(1))
+        packet["more-fragments"] = bool(self.buf.rb(1))
+        packet["fragment-offset"] = self.buf.rb(13)
+        packet["ttl"] = self.buf.ru8()
+        packet["protocol"] = utils.unraw(
+            self.buf.ru8(),
+            1,
+            {
+                0x01: "ICMP",
+                0x02: "IGMP",
+                0x06: "TCP",
+                0x11: "UDP",
+                0x29: "ENCAP",
+                0x59: "OSPF",
+                0x84: "SCTP",
+            },
+            True,
+        )
+        packet["checksum"] = self.buf.ru16()
+        packet["source-address"] = ".".join([str(self.buf.ru8()) for i in range(0, 4)])
+        packet["destination-address"] = ".".join([
+            str(self.buf.ru8()) for i in range(0, 4)
+        ])
+        packet["options"] = self.buf.rh(self.buf.unit)
+
+        self.buf.sapunit()
+
+        self.buf.pasunit(packet["total-length"] - packet["header-length"])
+
+        if packet["more-fragments"] or packet["fragment-offset"] != 0:
+            packet["payload"] = self.buf.rh(self.buf.unit)
+        else:
+            match packet["protocol"]:
+                case "UDP":
+                    packet["payload"] = self.read_udp()
+                case "TCP":
+                    packet["payload"] = self.read_tcp()
+                case _:
+                    packet["payload"] = self.buf.rh(self.buf.unit)
+                    packet["unknown"] = True
+
+        self.buf.sapunit()
+
+        return packet
+
+    def read_udp(self):
+        packet = {}
+        packet["source-port"] = self.buf.ru16()
+        packet["destination-port"] = self.buf.ru16()
+        packet["length"] = self.buf.ru16()
+
+        self.buf.pasunit(packet["length"] - 6)
+
+        packet["checksum"] = self.buf.ru16()
+        packet["payload"] = self.buf.rh(self.buf.unit)
+
+        self.buf.sapunit()
+
+        return packet
+
+    def read_tcp(self):
+        packet = {}
+        packet["source-port"] = self.buf.ru16()
+        packet["destination-port"] = self.buf.ru16()
+        packet["sequence-number"] = self.buf.ru32()
+        packet["acknowledgement-number"] = self.buf.ru32()
+        packet["data-offset"] = self.buf.rb(4)
+        packet["reserved"] = self.buf.rb(4)
+
+        self.buf.pasunit(packet["data-offset"] * 4 - 13)
+
+        packet["flags"] = {}
+        packet["flags"]["cwr"] = bool(self.buf.rb(1))
+        packet["flags"]["ece"] = bool(self.buf.rb(1))
+        packet["flags"]["urg"] = bool(self.buf.rb(1))
+        packet["flags"]["ack"] = bool(self.buf.rb(1))
+        packet["flags"]["psh"] = bool(self.buf.rb(1))
+        packet["flags"]["rst"] = bool(self.buf.rb(1))
+        packet["flags"]["syn"] = bool(self.buf.rb(1))
+        packet["flags"]["fin"] = bool(self.buf.rb(1))
+
+        packet["window"] = self.buf.ru16()
+        packet["checksum"] = self.buf.ru16()
+        packet["urgent-pointer"] = self.buf.ru16()
+
+        packet["options"] = []
+        while self.buf.unit > 0:
+            opt = {}
+            opt["type"] = utils.unraw(
+                self.buf.ru8(),
+                1,
+                {
+                    0x01: "No operation",
+                    0x08: "Timestamp and echo of previous timestamp",
+                },
+                True,
+            )
+
+            match opt["type"]:
+                case "No operation":
+                    pass
+                case "Timestamp and echo of previous timestamp":
+                    self.buf.skip(1)
+                    opt["tsval"] = self.buf.ru32()
+                    opt["tsecr"] = self.buf.ru32()
+                case _:
+                    self.buf.skip(self.buf.unit)
+
+            packet["options"].append(opt)
+
+        self.buf.sapunit()
+
+        packet["payload"] = self.buf.rh(self.buf.unit)
+
+        return packet
+
     def chew(self):
         meta = {}
         meta["type"] = "pcapng"
@@ -1831,6 +1958,7 @@ class PcapNgModule(module.RuminantModule):
         meta["sections"] = []
 
         while self.buf.available() > 0:
+            interfaces = {}
             section = {}
             section["offset"] = self.buf.tell()
 
@@ -2099,6 +2227,8 @@ class PcapNgModule(module.RuminantModule):
                         block["data"]["snap-length"] = (
                             self.buf.ru32l() if self.little else self.buf.ru32()
                         )
+
+                        interfaces[len(interfaces)] = block["data"]["link-type"]
                     case "Enhanced Packet":
                         block["data"]["interface-id"] = (
                             self.buf.ru32l() if self.little else self.buf.ru32()
@@ -2113,9 +2243,43 @@ class PcapNgModule(module.RuminantModule):
                         block["data"]["original-packet-length"] = (
                             self.buf.ru32l() if self.little else self.buf.ru32()
                         )
-                        block["data"]["packet"] = self.buf.rh(
-                            block["data"]["captured-packet-length"]
-                        )
+
+                        self.buf.pasunit(block["data"]["captured-packet-length"])
+
+                        match interfaces[block["data"]["interface-id"]]:
+                            case "ETHERNET":
+                                block["data"]["packet"] = {}
+                                block["data"]["packet"]["destination-mac"] = (
+                                    self.buf.rh(6)
+                                )
+                                block["data"]["packet"]["source-mac"] = self.buf.rh(6)
+                                block["data"]["packet"]["ethertype"] = utils.unraw(
+                                    self.buf.ru16(),
+                                    2,
+                                    {0x0800: "IPv4", 0x0806: "ARP", 0x08dd: "IPv6"},
+                                    True,
+                                )
+
+                                self.buf.pasunit(self.buf.unit)
+
+                                match block["data"]["packet"]["ethertype"]:
+                                    case "IPv4":
+                                        block["data"]["packet"]["payload"] = (
+                                            self.read_ipv4()
+                                        )
+                                    case _:
+                                        block["data"]["packet"]["payload"] = (
+                                            self.buf.rh(self.buf.unit)
+                                        )
+                                        block["data"]["packet"]["unknown"] = True
+
+                                self.buf.sapunit()
+                            case _:
+                                block["data"]["packet"] = self.buf.rh(
+                                    block["data"]["captured-packet-length"]
+                                )
+
+                        self.buf.sapunit()
                     case "Interface Statistics":
                         block["data"]["interface-id"] = (
                             self.buf.ru32l() if self.little else self.buf.ru32()
