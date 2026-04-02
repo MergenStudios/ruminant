@@ -6,6 +6,7 @@ import tempfile
 import datetime
 import base64
 import zlib
+import ipaddress
 
 
 @module.register
@@ -2004,8 +2005,10 @@ class PcapNgModule(module.RuminantModule):
 
         packet["next-header"] = self.buf.ru8()
         packet["hop-limit"] = self.buf.ru8()
-        packet["source-address"] = self.buf.rh(16)
-        packet["destination-address"] = self.buf.rh(16)
+        packet["source-address"] = ipaddress.IPv6Address(self.buf.read(16)).compressed
+        packet["destination-address"] = ipaddress.IPv6Address(
+            self.buf.read(16)
+        ).compressed
 
         next_type = packet["next-header"]
         packet["headers"] = []
@@ -2382,10 +2385,12 @@ class PcapNgModule(module.RuminantModule):
                         match interfaces[block["data"]["interface-id"]]:
                             case "ETHERNET":
                                 block["data"]["packet"] = {}
-                                block["data"]["packet"]["destination-mac"] = (
-                                    self.buf.rh(6)
-                                )
-                                block["data"]["packet"]["source-mac"] = self.buf.rh(6)
+                                block["data"]["packet"]["destination-mac"] = ":".join([
+                                    self.buf.rh(1) for i in range(0, 6)
+                                ])
+                                block["data"]["packet"]["source-mac"] = ":".join([
+                                    self.buf.rh(1) for i in range(0, 6)
+                                ])
                                 block["data"]["packet"]["ethertype"] = utils.unraw(
                                     self.buf.ru16(),
                                     2,
