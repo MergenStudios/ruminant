@@ -117,6 +117,7 @@ Ruminant is still in early alpha but it can already process the following file t
   * the text ones are just already supported XML files
 * GGUF files
 * pcapng files
+* OpenStreetMap protobuf files
 
 # How do I install it?
 Run `pip3 install ruminant`.

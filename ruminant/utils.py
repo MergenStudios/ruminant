@@ -193,14 +193,22 @@ def read_protobuf(buf, length, escape=False, decode={}):
                             value = value[0]
                     case "s32":
                         # bytes are actually a signed int
-                        value = (2**32 - 1) - value - 1
+                        if value >> 31:
+                            value = (value ^ 0xffffffff) + 1
                     case "s64":
                         # bytes are actually a signed long
-                        value = (2**64 - 1) - value - 1
+                        if value >> 63:
+                            value = (value ^ 0xffffffffffffffff) + 1
                     case "u8":
                         # bytes are actually u8s
                         value = [
                             int.from_bytes(value[i : i + 1], "little")
+                            for i in range(0, len(value))
+                        ]
+                    case "u16":
+                        # bytes are actually u16s
+                        value = [
+                            int.from_bytes(value[i : i + 2], "little")
                             for i in range(0, len(value))
                         ]
                     case "u32":
@@ -213,6 +221,30 @@ def read_protobuf(buf, length, escape=False, decode={}):
                         # bytes are actually u64s
                         value = [
                             int.from_bytes(value[i : i + 8], "little")
+                            for i in range(0, len(value), 8)
+                        ]
+                    case "i8":
+                        # bytes are actually i8s
+                        value = [
+                            int.from_bytes(value[i : i + 1], "little", signed=True)
+                            for i in range(0, len(value))
+                        ]
+                    case "i16":
+                        # bytes are actually i16s
+                        value = [
+                            int.from_bytes(value[i : i + 2], "little", signed=True)
+                            for i in range(0, len(value))
+                        ]
+                    case "i32":
+                        # bytes are actually i32s
+                        value = [
+                            int.from_bytes(value[i : i + 4], "little", signed=True)
+                            for i in range(0, len(value), 4)
+                        ]
+                    case "i64":
+                        # bytes are actually i64s
+                        value = [
+                            int.from_bytes(value[i : i + 8], "little", signed=True)
                             for i in range(0, len(value), 8)
                         ]
                     case _:

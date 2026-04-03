@@ -1,4 +1,5 @@
 from .. import module, utils, constants
+from ..buf import Buf
 from . import chew
 import tempfile
 import sqlite3
@@ -1588,5 +1589,150 @@ class BplistModule(module.RuminantModule):
         )
 
         self.buf.seek(self.buf.size())
+
+        return meta
+
+
+@module.register
+class OsmPbfFormat(module.RuminantModule):
+    desc = "OpenStreetMap protobuf files."
+
+    def identify(buf, ctx):
+        if buf.available() < 15:
+            return False
+
+        with buf:
+            if buf.ru32() & 0xfffffff0 != 0:
+                return False
+
+            if buf.ru16() != 0x0a09:
+                return False
+
+            if buf.rs(9) != "OSMHeader":
+                return False
+        return True
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "osm-pbf"
+
+        meta["blobs"] = []
+        while self.buf.available() > 0:
+            blob = {}
+            blob["header"] = {}
+            blob["header"]["length"] = self.buf.ru32()
+
+            self.buf.pasunit(blob["header"]["length"])
+
+            blob["header"]["data"] = utils.read_protobuf(
+                self.buf,
+                self.buf.unit,
+                True,
+                {"keys": {1: "type", 2: "indexdata", 3: "datasize"}, 1: "utf-8"},
+            )
+
+            self.buf.sapunit()
+
+            self.buf.pasunit(blob["header"]["data"]["datasize"])
+
+            body = utils.read_protobuf(self.buf, self.buf.unit)
+            blob["body-size"] = body[2]
+
+            keys = list(body.keys())
+            keys.remove(2)
+            blob["compression"] = utils.unraw(
+                keys[0],
+                1,
+                {
+                    0x01: "raw",
+                    0x03: "zlib",
+                    0x04: "lzma",
+                    0x05: "bzip2",
+                    0x06: "lz4",
+                    0x07: "zstd",
+                },
+                True,
+            )
+
+            content = body[keys[0]]
+            match blob["compression"]:
+                case "raw":
+                    pass
+                case "zlib":
+                    content = zlib.decompress(content)
+                case _:
+                    blob["unknown"] = True
+
+            if "unknown" not in blob:
+                buf = Buf(content)
+                # https://github.com/openstreetmap/OSM-binary/blob/master/osmpbf/osmformat.proto
+                blob["data"] = utils.read_protobuf(
+                    buf,
+                    buf.available(),
+                    True,
+                    {
+                        "OSMHeader": {
+                            "keys": {
+                                1: "bbox",
+                                4: "required_features",
+                                5: "optional_features",
+                                16: "writingprogram",
+                                17: "source",
+                                32: "osmosis_replication_timestamp",
+                                33: "osmosis_replication_sequence_number",
+                                34: "osmosis_replication_base_url",
+                            },
+                            1: {
+                                "keys": {1: "left", 2: "right", 3: "top", 4: "bottom"},
+                                1: "s64",
+                                2: "s64",
+                                3: "s64",
+                                4: "s64",
+                            },
+                            4: "utf-8",
+                            5: "utf-8",
+                            16: "utf-8",
+                            17: "utf-8",
+                            34: "utf-8",
+                        },
+                        "OSMData": {
+                            "keys": {1: "stringtable", 2: "primitivegroup"},
+                            1: {"keys": {1: "s"}, 1: "utf-8"},
+                            2: {
+                                "keys": {
+                                    1: "nodes",
+                                    2: "dense",
+                                    3: "ways",
+                                    4: "relations",
+                                    5: "changesets",
+                                },
+                                1: {},
+                                2: {
+                                    "keys": {
+                                        1: "version",
+                                        2: "timestamp",
+                                        3: "changeset",
+                                        4: "uid",
+                                        5: "user_sid",
+                                        6: "visible",
+                                    },
+                                    1: "u32",
+                                    2: "i64",
+                                    3: "i64",
+                                    4: "i32",
+                                    5: "i32",
+                                    6: "u8",
+                                },
+                                3: {},
+                                4: {},
+                                5: {},
+                            },
+                        },
+                    }.get(blob["header"]["data"]["type"], {}),
+                )
+
+            self.buf.sapunit()
+
+            meta["blobs"].append(blob)
 
         return meta
