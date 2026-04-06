@@ -1935,6 +1935,7 @@ class PcapNgModule(module.RuminantModule):
                     0x02: "Maximum segment size",
                     0x03: "Window scale",
                     0x04: "Selective Acknowledgement permitted",
+                    0x05: "Selective ACKnowledgement (SACK)",
                     0x08: "Timestamp and echo of previous timestamp",
                 },
                 True,
@@ -1951,6 +1952,11 @@ class PcapNgModule(module.RuminantModule):
                     opt["window-scale"] = self.buf.ru8()
                 case "Selective Acknowledgement permitted":
                     self.buf.skip(1)
+                case "Selective ACKnowledgement (SACK)":
+                    opt["ranges"] = [
+                        {"start": self.buf.ru32(), "end": self.buf.ru32()}
+                        for i in range(0, (self.buf.ru8() - 2) // 8)
+                    ]
                 case "Timestamp and echo of previous timestamp":
                     self.buf.skip(1)
                     opt["tsval"] = self.buf.ru32()
@@ -2062,6 +2068,8 @@ class PcapNgModule(module.RuminantModule):
             {
                 0x80: "Echo Request",
                 0x81: "Echo Reply",
+                0x87: "Neighbor Solicitation",
+                0x88: "Neighbor Advertisement",
             },
             True,
         )
@@ -2071,6 +2079,8 @@ class PcapNgModule(module.RuminantModule):
             {
                 "Echo Request": {0x00: "Echo Request"},
                 "Echo Reply": {0x00: "Echo Reply"},
+                "Neighbor Solicitation": {0x00: "Neighbor Solicitation"},
+                "Neighbor Advertisement": {0x00: "Neighbor Advertisement"},
             }.get(packet["type"], {}),
             True,
         )
@@ -2081,8 +2091,225 @@ class PcapNgModule(module.RuminantModule):
                 packet["identifier"] = self.buf.ru16()
                 packet["sequence-number"] = self.buf.ru16()
                 packet["payload"] = self.buf.rh(self.buf.unit)
+            case "Neighbor Solicitation", "Neighbor Solicitation":
+                packet["reserved"] = self.buf.ru32()
+                packet["target-address"] = ipaddress.IPv6Address(
+                    self.buf.read(16)
+                ).compressed
+            case "Neighbor Advertisement", "Neighbor Advertisement":
+                packet["router"] = bool(self.buf.rb(1))
+                packet["solicited"] = bool(self.buf.rb(1))
+                packet["override"] = bool(self.buf.rb(1))
+                packet["reserved"] = self.buf.rb(29)
+                packet["target-address"] = ipaddress.IPv6Address(
+                    self.buf.read(16)
+                ).compressed
             case _, _:
                 packet["payload"] = self.buf.rh(self.buf.unit)
+                packet["unknown"] = True
+
+        if (packet["type"], packet["code"]) in (
+            ("Neighbor Solicitation", "Neighbor Solicitation"),
+            ("Neighbor Advertisement", "Neighbor Advertisement"),
+        ):
+            packet["options"] = []
+
+            while self.buf.unit > 0:
+                opt = {}
+                opt["type"] = utils.unraw(
+                    self.buf.ru8(),
+                    1,
+                    {
+                        0x01: "Source Link-Layer Address",
+                        0x02: "Target Link-Layer Address",
+                        0x03: "Prefix Information",
+                        0x04: "Redirected Header",
+                        0x05: "MTU",
+                    },
+                    True,
+                )
+                opt["length"] = self.buf.ru8()
+
+                self.buf.pasunit(opt["length"] * 8 - 2)
+
+                match opt["type"]:
+                    case "Source Link-Layer Address" | "Target Link-Layer Address":
+                        opt["link-layer-address"] = self.buf.rh(self.buf.unit)
+                    case _:
+                        opt["unknown"] = True
+
+                self.buf.sapunit()
+                packet["options"].append(opt)
+
+        return packet
+
+    def read_lldp(self):
+        # IEEE/ISO/IEC 8802-1AB
+        packet = {}
+
+        packet["values"] = []
+        while self.buf.unit > 0:
+            tlv = {}
+            tlv["tag"] = utils.unraw(
+                self.buf.rb(7),
+                1,
+                {
+                    0x00: "End",
+                    0x01: "Chassis ID",
+                    0x02: "Port ID",
+                    0x03: "Time To Live",
+                    0x04: "Port description",
+                    0x05: "System name",
+                    0x06: "System description",
+                    0x07: "System capabilities",
+                    0x08: "Management address",
+                },
+                True,
+            )
+
+            tlv["length"] = self.buf.rb(9)
+            self.buf.pasunit(tlv["length"])
+
+            tlv["value"] = {}
+            match tlv["tag"]:
+                case "End":
+                    pass
+                case "Chassis ID":
+                    tlv["value"]["subtype"] = utils.unraw(
+                        self.buf.ru8(),
+                        1,
+                        {
+                            0x00: "Reserved",
+                            0x01: "Chassis component",
+                            0x02: "Interface alias",
+                            0x03: "Port component",
+                            0x04: "MAC address",
+                            0x05: "Network address",
+                            0x06: "Interface name",
+                            0x07: "Locally assigned",
+                        },
+                        True,
+                    )
+                    tlv["value"]["id"] = self.buf.rh(self.buf.unit)
+                case "Port ID":
+                    tlv["value"]["subtype"] = utils.unraw(
+                        self.buf.ru8(),
+                        1,
+                        {
+                            0x00: "Reserved",
+                            0x01: "Interface alias",
+                            0x02: "Port component",
+                            0x03: "MAC address",
+                            0x04: "Network address",
+                            0x05: "Interface name",
+                            0x06: "Agent circuit ID",
+                            0x07: "Locally assigned",
+                        },
+                        True,
+                    )
+                    tlv["value"]["id"] = self.buf.rh(self.buf.unit)
+                case "Time To Live":
+                    tlv["value"]["seconds"] = self.buf.ru16()
+                case "System capabilities":
+                    bits = (
+                        (0, "Other"),
+                        (1, "Repeater"),
+                        (2, "MAC Bridge component"),
+                        (3, "802.11 Access Point"),
+                        (4, "Router"),
+                        (5, "Telephone"),
+                        (6, "DOCSIS cable device"),
+                        (7, "Station Only"),
+                        (8, "C-VLAN component"),
+                        (9, "S-VLAN component"),
+                        (10, "Two-port MAC Relay component"),
+                    )
+                    tlv["value"]["capabilities"] = utils.unpack_flags(
+                        self.buf.ru16(), bits
+                    )
+                    tlv["value"]["enabled"] = utils.unpack_flags(self.buf.ru16(), bits)
+                case "Port description" | "System name" | "System description":
+                    tlv["value"]["string"] = self.buf.rs(self.buf.unit)
+                case _:
+                    tlv["unknown"] = True
+
+            self.buf.sapunit()
+            packet["values"].append(tlv)
+
+        return packet
+
+    def read_arp(self):
+        packet = {}
+        packet["hardware-type"] = utils.unraw(
+            self.buf.ru16(),
+            2,
+            {
+                0x0000: "Reserved",
+                0x0001: "Ethernet (10Mb)",
+                0x0002: "Experimental Ethernet (3Mb)",
+                0x0003: "Amateur Radio AX.25",
+                0x0004: "Proteon ProNET Token Ring",
+                0x0005: "Chaos",
+                0x0006: "IEEE 802 Networks",
+                0x0007: "ARCNET",
+                0x0008: "Hyperchannel",
+                0x0009: "Lanstar",
+                0x000A: "Autonet Short Address",
+                0x000B: "LocalTalk",
+                0x000C: "LocalNet (IBM PCNet or SYTEK LocalNET)",
+                0x000D: "Ultra link",
+                0x000E: "SMDS",
+                0x000F: "Frame Relay",
+                0x0010: "Asynchronous Transmission Mode (ATM)",
+                0x0011: "HDLC",
+                0x0012: "Fibre Channel",
+                0x0013: "Asynchronous Transmission Mode (ATM)",
+                0x0014: "Serial Line",
+                0x0015: "Asynchronous Transmission Mode (ATM)",
+                0x0016: "MIL-STD-188-220",
+                0x0017: "Metricom",
+                0x0018: "IEEE 1394.1995",
+                0x0019: "MAPOS",
+                0x001A: "Twinaxial",
+                0x001B: "EUI-64",
+                0x001C: "HIPARP",
+                0x001D: "IP and ARP over ISO 7816-3",
+                0x001E: "ARPSec",
+                0x001F: "IPsec tunnel",
+                0x0020: "InfiniBand (TM)",
+                0x0021: "TIA-102 Project 25 Common Air Interface (CAI)",
+                0x0022: "Wiegand Interface",
+                0x0023: "Pure IP",
+                0x0024: "HW_EXP1",
+                0x0025: "HFI",
+                0x0026: "Unified Bus (UB)",
+            },
+            True,
+        )
+        packet["protocol-type"] = utils.unraw(
+            self.buf.ru16(), 2, {0x0800: "IPv4", 0x86dd: "IPv6"}, True
+        )
+        packet["hardware-length"] = self.buf.ru8()
+        packet["protocol-length"] = self.buf.ru8()
+        packet["operation"] = utils.unraw(
+            self.buf.ru16(), 2, {0x00: "Reserved", 0x01: "Request", 0x02: "Reply"}, True
+        )
+
+        match packet["operation"]:
+            case "Request" | "Reply":
+                packet["sender-hardware-address"] = self.buf.rh(
+                    packet["hardware-length"]
+                )
+                packet["sender-protocol-address"] = self.buf.rh(
+                    packet["protocol-length"]
+                )
+                packet["target-hardware-address"] = self.buf.rh(
+                    packet["hardware-length"]
+                )
+                packet["target-protocol-address"] = self.buf.rh(
+                    packet["protocol-length"]
+                )
+            case _:
                 packet["unknown"] = True
 
         return packet
@@ -2394,7 +2621,12 @@ class PcapNgModule(module.RuminantModule):
                                 block["data"]["packet"]["ethertype"] = utils.unraw(
                                     self.buf.ru16(),
                                     2,
-                                    {0x0800: "IPv4", 0x0806: "ARP", 0x86dd: "IPv6"},
+                                    {
+                                        0x0800: "IPv4",
+                                        0x0806: "ARP",
+                                        0x86dd: "IPv6",
+                                        0x88cc: "LLDP",
+                                    },
                                     True,
                                 )
 
@@ -2409,11 +2641,24 @@ class PcapNgModule(module.RuminantModule):
                                         block["data"]["packet"]["payload"] = (
                                             self.read_ipv6()
                                         )
+                                    case "LLDP":
+                                        block["data"]["packet"]["payload"] = (
+                                            self.read_lldp()
+                                        )
+                                    case "ARP":
+                                        block["data"]["packet"]["payload"] = (
+                                            self.read_arp()
+                                        )
                                     case _:
                                         block["data"]["packet"]["payload"] = (
                                             self.buf.rh(self.buf.unit)
                                         )
-                                        block["data"]["packet"]["unknown"] = True
+
+                                        if block["data"]["packet"]["ethertype"] not in (
+                                            "Unknown (0x88e1)",
+                                            "Unknown (0x8912)",
+                                        ):
+                                            block["data"]["packet"]["unknown"] = True
 
                                 self.buf.sapunit()
                             case _:
