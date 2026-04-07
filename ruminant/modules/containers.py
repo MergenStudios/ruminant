@@ -2230,6 +2230,53 @@ class PcapNgModule(module.RuminantModule):
                         self.buf.ru16(), bits
                     )
                     tlv["value"]["enabled"] = utils.unpack_flags(self.buf.ru16(), bits)
+                case "Management address":
+                    tlv["value"]["management-address-length"] = self.buf.ru8()
+                    # https://www.iana.org/assignments/address-family-numbers/address-family-numbers.xhtml
+                    tlv["value"]["management-address-subtype"] = utils.unraw(
+                        self.buf.ru8(),
+                        1,
+                        {0x01: "IPv4", 0x02: "IPv6", 0x06: "MAC"},
+                        True,
+                    )
+
+                    self.buf.pasunit(tlv["value"]["management-address-length"] - 1)
+
+                    match tlv["value"]["management-address-subtype"]:
+                        case "IPv4":
+                            tlv["value"]["management-address"] = ".".join([
+                                str(self.buf.ru8()) for i in range(0, 4)
+                            ])
+                        case "IPv6":
+                            tlv["value"]["management-address"] = ipaddress.IPv6Address(
+                                self.buf.read(16)
+                            ).compressed
+                        case "MAC":
+                            tlv["value"]["management-address"] = ":".join([
+                                self.buf.rh(1) for i in range(0, 6)
+                            ])
+                        case _:
+                            tlv["value"]["management-address"] = self.buf.rh(
+                                self.buf.unit
+                            )
+                            tlv["value"]["unknown"] = True
+
+                    self.buf.sapunit()
+
+                    tlv["value"]["interface-numbering-subtype"] = utils.unraw(
+                        self.buf.ru8(),
+                        1,
+                        {0x01: "Unknown", 0x02: "ifIndex", 0x03: "system port number"},
+                        True,
+                    )
+                    tlv["value"]["interface-number"] = self.buf.ru32()
+                    tlv["value"]["object-id-length"] = self.buf.ru8()
+
+                    self.buf.pasunit(tlv["value"]["object-id-length"])
+
+                    if self.buf.unit > 0:
+                        tlv["value"]["object-id"] = utils.read_oid(self.buf)
+                    self.buf.sapunit()
                 case "Port description" | "System name" | "System description":
                     tlv["value"]["string"] = self.buf.rs(self.buf.unit)
                 case _:
