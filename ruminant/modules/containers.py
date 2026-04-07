@@ -1876,6 +1876,8 @@ class PcapNgModule(module.RuminantModule):
                     packet["payload"] = self.read_tcp()
                 case "ICMP":
                     packet["payload"] = self.read_icmp()
+                case "IGMP":
+                    packet["payload"] = self.read_igmp()
                 case _:
                     packet["payload"] = self.buf.rh(self.buf.unit)
                     packet["unknown"] = True
@@ -2309,6 +2311,80 @@ class PcapNgModule(module.RuminantModule):
                 packet["target-protocol-address"] = self.buf.rh(
                     packet["protocol-length"]
                 )
+            case _:
+                packet["unknown"] = True
+
+        return packet
+
+    def read_igmp(self):
+        packet = {}
+        packet["type"] = utils.unraw(
+            self.buf.ru8(),
+            1,
+            {
+                0x11: "Membership Query",
+                0x12: "IGMPv1 Membership Report",
+                0x16: "IGMPv2 Membership Report",
+                0x17: "Leave Group",
+                0x22: "IGMPv3 Membership Report",
+            },
+            True,
+        )
+
+        match packet["type"]:
+            case "Membership Query":
+                packet["maximum-response-time"] = self.buf.ru8()
+                packet["checksum"] = self.buf.ru16()
+                packet["group-address"] = ".".join([
+                    str(self.buf.ru8()) for i in range(0, 4)
+                ])
+
+                if self.buf.unit >= 4:
+                    packet["reserved"] = self.buf.rb(4)
+                    packet["s"] = bool(self.buf.rb(1))
+                    packet["qrv"] = self.buf.rb(3)
+                    packet["qqic"] = self.buf.ru8()
+                    packet["sources-count"] = self.buf.ru16()
+                    packet["sources"] = [
+                        ".".join([str(self.buf.ru8()) for i in range(0, 4)])
+                        for j in range(0, packet["sources-count"])
+                    ]
+
+                packet["aux-data"] = self.buf.rh(self.buf.unit)
+            case "IGMPv3 Membership Report":
+                packet["reserved1"] = self.buf.ru8()
+                packet["checksum"] = self.buf.ru16()
+                packet["reserved2"] = self.buf.ru16()
+                packet["group-record-count"] = self.buf.ru16()
+
+                packet["group-records"] = []
+                for i in range(0, packet["group-record-count"]):
+                    record = {}
+                    record["type"] = utils.unraw(
+                        self.buf.ru8(),
+                        1,
+                        {
+                            0x01: "MODE_IS_INCLUDE",
+                            0x02: "MODE_IS_EXCLUDE",
+                            0x03: "CHANGE_TO_INCLUDE_MODE",
+                            0x04: "CHANGE_TO_EXCLUDE_MODE",
+                            0x05: "ALLOW_NEW_SOURCES",
+                            0x06: "BLOCK_OLD_SOURCES",
+                        },
+                        True,
+                    )
+                    record["aux-data-length"] = self.buf.ru8()
+                    record["sources-count"] = self.buf.ru16()
+                    record["multicast-address"] = ".".join([
+                        str(self.buf.ru8()) for i in range(0, 4)
+                    ])
+                    record["sources"] = [
+                        ".".join([str(self.buf.ru8()) for i in range(0, 4)])
+                        for j in range(0, record["sources-count"])
+                    ]
+                    packet["aux-data"] = self.buf.rh(record["aux-data-length"])
+
+                    packet["group-records"].append(record)
             case _:
                 packet["unknown"] = True
 
