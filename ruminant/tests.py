@@ -898,7 +898,7 @@ def poly1305():
         assert_eq(crypto.poly1305(bytes.fromhex(msg), bytes.fromhex(key)).hex(), tag)
 
 
-@test("Cryptography", "Chacha20-Poly1305")
+@test("Cryptography", "ChaCha20-Poly1305")
 def chacha20_poly1305():
     assert_eq(
         crypto.chacha20_poly1305(
