@@ -19,8 +19,6 @@ def decompress(compressed_bytes):
 
 class ByteDecoder(object):
     def __init__(self):
-        """ """
-
         self._decoder = Decoder()
         self._unpacker = BitUnpacker(initial_code_size=self._decoder.code_size())
         self.remaining = []

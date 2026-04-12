@@ -8,7 +8,7 @@ authors = [
     {name = "Laura Kirsch"}
 ]
 description = "Recursive metadata extraction tool"
-version = "0.0.32"
+version = "0.0.33"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
@@ -27,7 +27,7 @@ ruminant = "ruminant.main:main"
 "Issues" = "https://github.com/jakiki6/ruminant/issues"
 
 [project.optional-dependencies]
-recommended = [
+full = [
   "tqdm",
   "pyzstd",
   "backports.zstd",
