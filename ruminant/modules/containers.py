@@ -2027,6 +2027,7 @@ class PcapNgModule(module.RuminantModule):
                 next_type,
                 1,
                 {
+                    0x00: "Hop-by-Hop",
                     0x01: "ICMP",
                     0x02: "IGMP",
                     0x06: "TCP",
@@ -2052,6 +2053,60 @@ class PcapNgModule(module.RuminantModule):
                 case "ICMP":
                     hdr["payload"] = self.read_icmp()
                     should_break = True
+                case "Hop-by-Hop":
+                    next_type = self.buf.ru8()
+                    hdr["next-header"] = next_type
+                    hdr["length"] = self.buf.ru8()
+                    self.buf.pasunit(hdr["length"] * 8 + 6)
+
+                    hdr["options"] = []
+                    while self.buf.unit > 0:
+                        opt = {}
+                        typ = self.buf.ru8()
+                        opt["type"] = {
+                            "name": utils.unraw(
+                                typ & 0x1f,
+                                1,
+                                {0x00: "Pad1", 0x01: "PadN", 0x05: "Router Alert"},
+                                True,
+                            ),
+                            "action": [
+                                "skip",
+                                "discard",
+                                "discard-icmp",
+                                "discard-icmp-multicast",
+                            ][typ >> 6],
+                            "may-change": bool(typ & 0x20),
+                        }
+
+                        if typ & 0x1f != 0:
+                            opt["length"] = self.buf.ru8()
+
+                            self.buf.pasunit(opt["length"])
+
+                            match opt["type"]["name"]:
+                                case "Router Alert":
+                                    opt["protocol"] = utils.unraw(
+                                        self.buf.ru16(),
+                                        2,
+                                        {
+                                            0x00: "MLD",
+                                            0x01: "RSVP",
+                                            0x02: "Active Networks",
+                                        },
+                                        True,
+                                    )
+                                case "PadN":
+                                    pass
+                                case _:
+                                    opt["payload"] = self.buf.rh(self.buf.unit)
+                                    opt["unknown"] = True
+
+                            self.buf.sapunit()
+
+                        hdr["options"].append(opt)
+
+                    self.buf.sapunit()
                 case _:
                     hdr["unknown"] = True
                     should_break = True
@@ -2070,8 +2125,10 @@ class PcapNgModule(module.RuminantModule):
             {
                 0x80: "Echo Request",
                 0x81: "Echo Reply",
+                0x86: "Router Advertisement",
                 0x87: "Neighbor Solicitation",
                 0x88: "Neighbor Advertisement",
+                0x8f: "Multicast Listener Reports v2",
             },
             True,
         )
@@ -2081,8 +2138,12 @@ class PcapNgModule(module.RuminantModule):
             {
                 "Echo Request": {0x00: "Echo Request"},
                 "Echo Reply": {0x00: "Echo Reply"},
+                "Router Advertisement": {0x00: "Router Advertisement"},
                 "Neighbor Solicitation": {0x00: "Neighbor Solicitation"},
                 "Neighbor Advertisement": {0x00: "Neighbor Advertisement"},
+                "Multicast Listener Reports v2": {
+                    0x00: "Multicast Listener Reports v2"
+                },
             }.get(packet["type"], {}),
             True,
         )
@@ -2106,6 +2167,45 @@ class PcapNgModule(module.RuminantModule):
                 packet["target-address"] = ipaddress.IPv6Address(
                     self.buf.read(16)
                 ).compressed
+            case "Router Advertisement", "Router Advertisement":
+                packet["hop-limit"] = self.buf.ru8()
+                packet["managed-address-configuration"] = bool(self.buf.rb(1))
+                packet["other-configuration"] = bool(self.buf.rb(1))
+                packet["reserved"] = self.buf.rb(6)
+                packet["router-lifetime"] = self.buf.ru16()
+                packet["reachable-time"] = self.buf.ru32()
+                packet["retrans-time"] = self.buf.ru32()
+            case "Multicast Listener Reports v2", "Multicast Listener Reports v2":
+                packet["extension"] = bool(self.buf.rb(1))
+                packet["reserved"] = self.buf.rb(15)
+                packet["multicast-address-count"] = self.buf.ru16()
+
+                packet["multicast-addresses"] = []
+                for i in range(0, packet["multicast-address-count"]):
+                    mcast = {}
+                    mcast["type"] = utils.unraw(
+                        self.buf.ru8(),
+                        1,
+                        {
+                            0x01: "MODE_IS_INCLUDE",
+                            0x02: "MODE_IS_EXCLUDE",
+                            0x03: "CHANGE_TO_INCLUDE_MODE",
+                            0x04: "CHANGE_TO_EXCLUDE_MODE",
+                        },
+                        True,
+                    )
+                    mcast["auxiliar-data-length"] = self.buf.ru8()
+                    mcast["source-count"] = self.buf.ru16()
+                    mcast["multicast-address"] = ipaddress.IPv6Address(
+                        self.buf.read(16)
+                    ).compressed
+                    mcast["sources"] = [
+                        ipaddress.IPv6Address(self.buf.read(16)).compressed
+                        for j in range(0, mcast["source-count"])
+                    ]
+                    mcast["auxiliar-data"] = self.buf.rh(mcast["auxiliar-data-length"])
+
+                    packet["multicast-addresses"].append(mcast)
             case _, _:
                 packet["payload"] = self.buf.rh(self.buf.unit)
                 packet["unknown"] = True
@@ -2113,6 +2213,7 @@ class PcapNgModule(module.RuminantModule):
         if (packet["type"], packet["code"]) in (
             ("Neighbor Solicitation", "Neighbor Solicitation"),
             ("Neighbor Advertisement", "Neighbor Advertisement"),
+            ("Router Advertisement", "Router Advertisement"),
         ):
             packet["options"] = []
 
@@ -2127,6 +2228,8 @@ class PcapNgModule(module.RuminantModule):
                         0x03: "Prefix Information",
                         0x04: "Redirected Header",
                         0x05: "MTU",
+                        0x07: "Advertisement Interval",
+                        0x19: "Recursive DNS Server",
                     },
                     True,
                 )
@@ -2137,6 +2240,29 @@ class PcapNgModule(module.RuminantModule):
                 match opt["type"]:
                     case "Source Link-Layer Address" | "Target Link-Layer Address":
                         opt["link-layer-address"] = self.buf.rh(self.buf.unit)
+                    case "Prefix Information":
+                        opt["prefix-length"] = self.buf.ru8()
+                        opt["on-link"] = bool(self.buf.rb(1))
+                        opt["autonomous-address-configuration"] = bool(self.buf.rb(1))
+                        opt["reserved1"] = self.buf.rb(6)
+                        opt["valid-lifetime"] = self.buf.ru32()
+                        opt["preferred-lifetime"] = self.buf.ru32()
+                        opt["reserved2"] = self.buf.ru32()
+                        opt["prefix"] = ipaddress.IPv6Address(
+                            self.buf.read(16)
+                        ).compressed
+                    case "Advertisement Interval":
+                        opt["reserved"] = self.buf.ru16()
+                        opt["advertisement-interval"] = self.buf.ru32()
+                    case "Recursive DNS Server":
+                        opt["reserved"] = self.buf.ru16()
+                        opt["lifetime"] = self.buf.ru32()
+
+                        opt["addresses"] = []
+                        while self.buf.unit >= 16:
+                            opt["addresses"].append(
+                                ipaddress.IPv6Address(self.buf.read(16)).compressed
+                            )
                     case _:
                         opt["unknown"] = True
 
@@ -2442,6 +2568,7 @@ class PcapNgModule(module.RuminantModule):
         meta["type"] = "pcapng"
 
         meta["sections"] = []
+        self.id = 1
 
         while self.buf.available() > 0:
             interfaces = {}
@@ -2716,6 +2843,9 @@ class PcapNgModule(module.RuminantModule):
 
                         interfaces[len(interfaces)] = block["data"]["link-type"]
                     case "Enhanced Packet":
+                        block["data"]["id"] = self.id
+                        self.id += 1
+
                         block["data"]["interface-id"] = (
                             self.buf.ru32l() if self.little else self.buf.ru32()
                         )
@@ -2741,49 +2871,69 @@ class PcapNgModule(module.RuminantModule):
                                 block["data"]["packet"]["source-mac"] = ":".join([
                                     self.buf.rh(1) for i in range(0, 6)
                                 ])
-                                block["data"]["packet"]["ethertype"] = utils.unraw(
-                                    self.buf.ru16(),
-                                    2,
-                                    {
-                                        0x0800: "IPv4",
-                                        0x0806: "ARP",
-                                        0x86dd: "IPv6",
-                                        0x88cc: "LLDP",
-                                    },
-                                    True,
-                                )
 
-                                self.buf.pasunit(self.buf.unit)
+                                temp = self.buf.ru16()
 
-                                match block["data"]["packet"]["ethertype"]:
-                                    case "IPv4":
-                                        block["data"]["packet"]["payload"] = (
-                                            self.read_ipv4()
-                                        )
-                                    case "IPv6":
-                                        block["data"]["packet"]["payload"] = (
-                                            self.read_ipv6()
-                                        )
-                                    case "LLDP":
-                                        block["data"]["packet"]["payload"] = (
-                                            self.read_lldp()
-                                        )
-                                    case "ARP":
-                                        block["data"]["packet"]["payload"] = (
-                                            self.read_arp()
-                                        )
-                                    case _:
-                                        block["data"]["packet"]["payload"] = (
-                                            self.buf.rh(self.buf.unit)
-                                        )
+                                if temp <= 1500:
+                                    block["data"]["packet"]["length"] = temp
+                                    block["data"]["packet"][
+                                        "destination-service-access-point"
+                                    ] = self.buf.ru8()
+                                    block["data"]["packet"][
+                                        "source-service-access-point"
+                                    ] = self.buf.ru8()
+                                    block["data"]["packet"]["ctrl"] = self.buf.ru8()
+                                    block["data"]["packet"]["data"] = self.buf.rh(
+                                        self.buf.unit
+                                    )
+                                else:
+                                    block["data"]["packet"]["ethertype"] = utils.unraw(
+                                        temp,
+                                        2,
+                                        {
+                                            0x0800: "IPv4",
+                                            0x0806: "ARP",
+                                            0x86dd: "IPv6",
+                                            0x88cc: "LLDP",
+                                        },
+                                        True,
+                                    )
 
-                                        if block["data"]["packet"]["ethertype"] not in (
-                                            "Unknown (0x88e1)",
-                                            "Unknown (0x8912)",
-                                        ):
-                                            block["data"]["packet"]["unknown"] = True
+                                    self.buf.pasunit(self.buf.unit)
 
-                                self.buf.sapunit()
+                                    match block["data"]["packet"]["ethertype"]:
+                                        case "IPv4":
+                                            block["data"]["packet"]["payload"] = (
+                                                self.read_ipv4()
+                                            )
+                                        case "IPv6":
+                                            block["data"]["packet"]["payload"] = (
+                                                self.read_ipv6()
+                                            )
+                                        case "LLDP":
+                                            block["data"]["packet"]["payload"] = (
+                                                self.read_lldp()
+                                            )
+                                        case "ARP":
+                                            block["data"]["packet"]["payload"] = (
+                                                self.read_arp()
+                                            )
+                                        case _:
+                                            block["data"]["packet"]["payload"] = (
+                                                self.buf.rh(self.buf.unit)
+                                            )
+
+                                            if block["data"]["packet"][
+                                                "ethertype"
+                                            ] not in (
+                                                "Unknown (0x88e1)",
+                                                "Unknown (0x8912)",
+                                            ):
+                                                block["data"]["packet"]["unknown"] = (
+                                                    True
+                                                )
+
+                                    self.buf.sapunit()
                             case _:
                                 block["data"]["packet"] = self.buf.rh(
                                     block["data"]["captured-packet-length"]
