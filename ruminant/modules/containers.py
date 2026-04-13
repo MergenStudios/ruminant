@@ -1933,6 +1933,7 @@ class PcapNgModule(module.RuminantModule):
                 self.buf.ru8(),
                 1,
                 {
+                    0x00: "End of list",
                     0x01: "No operation",
                     0x02: "Maximum segment size",
                     0x03: "Window scale",
@@ -1944,7 +1945,7 @@ class PcapNgModule(module.RuminantModule):
             )
 
             match opt["type"]:
-                case "No operation":
+                case "No operation" | "End of list":
                     pass
                 case "Maximum segment size":
                     self.buf.skip(1)
@@ -2901,37 +2902,43 @@ class PcapNgModule(module.RuminantModule):
 
                                     self.buf.pasunit(self.buf.unit)
 
-                                    match block["data"]["packet"]["ethertype"]:
-                                        case "IPv4":
-                                            block["data"]["packet"]["payload"] = (
-                                                self.read_ipv4()
-                                            )
-                                        case "IPv6":
-                                            block["data"]["packet"]["payload"] = (
-                                                self.read_ipv6()
-                                            )
-                                        case "LLDP":
-                                            block["data"]["packet"]["payload"] = (
-                                                self.read_lldp()
-                                            )
-                                        case "ARP":
-                                            block["data"]["packet"]["payload"] = (
-                                                self.read_arp()
-                                            )
-                                        case _:
-                                            block["data"]["packet"]["payload"] = (
-                                                self.buf.rh(self.buf.unit)
-                                            )
-
-                                            if block["data"]["packet"][
-                                                "ethertype"
-                                            ] not in (
-                                                "Unknown (0x88e1)",
-                                                "Unknown (0x8912)",
-                                            ):
-                                                block["data"]["packet"]["unknown"] = (
-                                                    True
+                                    backup = self.buf.backup()
+                                    try:
+                                        match block["data"]["packet"]["ethertype"]:
+                                            case "IPv4":
+                                                block["data"]["packet"]["payload"] = (
+                                                    self.read_ipv4()
                                                 )
+                                            case "IPv6":
+                                                block["data"]["packet"]["payload"] = (
+                                                    self.read_ipv6()
+                                                )
+                                            case "LLDP":
+                                                block["data"]["packet"]["payload"] = (
+                                                    self.read_lldp()
+                                                )
+                                            case "ARP":
+                                                block["data"]["packet"]["payload"] = (
+                                                    self.read_arp()
+                                                )
+                                            case _:
+                                                block["data"]["packet"]["payload"] = (
+                                                    self.buf.rh(self.buf.unit)
+                                                )
+
+                                                if block["data"]["packet"][
+                                                    "ethertype"
+                                                ] not in (
+                                                    "Unknown (0x88e1)",
+                                                    "Unknown (0x8912)",
+                                                ):
+                                                    block["data"]["packet"][
+                                                        "unknown"
+                                                    ] = True
+                                    except Exception:
+                                        self.buf.restore(backup)
+                                        self.buf.sapunit()
+                                        block["error"] = True
 
                                     self.buf.sapunit()
                             case _:
