@@ -2124,6 +2124,7 @@ class PcapNgModule(module.RuminantModule):
             self.buf.ru8(),
             1,
             {
+                0x01: "Destination unreachable",
                 0x80: "Echo Request",
                 0x81: "Echo Reply",
                 0x86: "Router Advertisement",
@@ -2137,6 +2138,7 @@ class PcapNgModule(module.RuminantModule):
             self.buf.ru8(),
             1,
             {
+                "Destination unreachable": {0x01: "Host unreachable error"},
                 "Echo Request": {0x00: "Echo Request"},
                 "Echo Reply": {0x00: "Echo Reply"},
                 "Router Advertisement": {0x00: "Router Advertisement"},
@@ -2207,6 +2209,11 @@ class PcapNgModule(module.RuminantModule):
                     mcast["auxiliar-data"] = self.buf.rh(mcast["auxiliar-data-length"])
 
                     packet["multicast-addresses"].append(mcast)
+            case "Destination unreachable", _:
+                packet["unused"] = self.buf.ru8()
+                packet["length"] = self.buf.ru8()
+                packet["next-hop-mtu"] = self.buf.ru16()
+                packet["ip-header"] = self.buf.rh(self.buf.unit)
             case _, _:
                 packet["payload"] = self.buf.rh(self.buf.unit)
                 packet["unknown"] = True
