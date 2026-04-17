@@ -2006,13 +2006,34 @@ class PcapNgModule(module.RuminantModule):
     def read_icmp(self):
         packet = {}
         packet["type"] = utils.unraw(
-            self.buf.ru8(), 1, {0x00: "Echo Reply", 0x08: "Echo Request"}, True
+            self.buf.ru8(),
+            1,
+            {0x00: "Echo Reply", 0x03: "Destination Unreachable", 0x08: "Echo Request"},
+            True,
         )
         packet["code"] = utils.unraw(
             self.buf.ru8(),
             1,
             {
                 "Echo Request": {0x00: "Echo Request"},
+                "Destination Unreachable": {
+                    0x00: "Destination network unreachable",
+                    0x01: "Destination host unreachable",
+                    0x02: "Destination protocol unreachable",
+                    0x03: "Destination port unreachable",
+                    0x04: "Fragmentation required, and DF flag set",
+                    0x05: "Source route failed",
+                    0x06: "Destination network unknown",
+                    0x07: "Destination host unknown",
+                    0x08: "Source host isolated",
+                    0x09: "Network administratively prohibited",
+                    0x0a: "Host administratively prohibited",
+                    0x0b: "Network unreachable for ToS",
+                    0x0c: "Host unreachable for ToS",
+                    0x0d: "Communication administratively prohibited",
+                    0x0e: "Host Precedence Violation",
+                    0x0f: "Precedence cutoff in effect",
+                },
                 "Echo Reply": {0x00: "Echo Reply"},
             }.get(packet["type"], {}),
             True,
@@ -2024,6 +2045,11 @@ class PcapNgModule(module.RuminantModule):
                 packet["identifier"] = self.buf.ru16()
                 packet["sequence-number"] = self.buf.ru16()
                 packet["payload"] = self.buf.rh(self.buf.unit)
+            case "Destination Unreachable", _:
+                packet["unused"] = self.buf.ru8()
+                packet["length"] = self.buf.ru8()
+                packet["next-hop-mtu"] = self.buf.ru16()
+                packet["ip-header"] = self.buf.rh(self.buf.unit)
             case _, _:
                 packet["rest"] = self.buf.ru32()
                 packet["payload"] = self.buf.rh(self.buf.unit)
@@ -2155,6 +2181,7 @@ class PcapNgModule(module.RuminantModule):
                 0x01: "Destination unreachable",
                 0x80: "Echo Request",
                 0x81: "Echo Reply",
+                0x85: "Router Solicitation",
                 0x86: "Router Advertisement",
                 0x87: "Neighbor Solicitation",
                 0x88: "Neighbor Advertisement",
@@ -2169,6 +2196,7 @@ class PcapNgModule(module.RuminantModule):
                 "Destination unreachable": {0x01: "Host unreachable error"},
                 "Echo Request": {0x00: "Echo Request"},
                 "Echo Reply": {0x00: "Echo Reply"},
+                "Router Solicitation": {0x00: "Router Solicitation"},
                 "Router Advertisement": {0x00: "Router Advertisement"},
                 "Neighbor Solicitation": {0x00: "Neighbor Solicitation"},
                 "Neighbor Advertisement": {0x00: "Neighbor Advertisement"},
@@ -2242,6 +2270,8 @@ class PcapNgModule(module.RuminantModule):
                 packet["length"] = self.buf.ru8()
                 packet["next-hop-mtu"] = self.buf.ru16()
                 packet["ip-header"] = self.buf.rh(self.buf.unit)
+            case "Router Solicitation", "Router Solicitation":
+                packet["reserved"] = self.buf.ru32()
             case _, _:
                 packet["payload"] = self.buf.rh(self.buf.unit)
                 packet["unknown"] = True
@@ -2250,6 +2280,7 @@ class PcapNgModule(module.RuminantModule):
             ("Neighbor Solicitation", "Neighbor Solicitation"),
             ("Neighbor Advertisement", "Neighbor Advertisement"),
             ("Router Advertisement", "Router Advertisement"),
+            ("Router Solicitation", "Router Solicitation"),
         ):
             packet["options"] = []
 
@@ -2265,6 +2296,7 @@ class PcapNgModule(module.RuminantModule):
                         0x04: "Redirected Header",
                         0x05: "MTU",
                         0x07: "Advertisement Interval",
+                        0x0e: "Nonce",
                         0x19: "Recursive DNS Server",
                     },
                     True,
@@ -2299,6 +2331,8 @@ class PcapNgModule(module.RuminantModule):
                             opt["addresses"].append(
                                 ipaddress.IPv6Address(self.buf.read(16)).compressed
                             )
+                    case "Nonce":
+                        opt["nonce"] = self.buf.rh(self.buf.unit)
                     case _:
                         opt["unknown"] = True
 
@@ -3020,6 +3054,7 @@ class PcapNgModule(module.RuminantModule):
                                                 ] not in (
                                                     "Unknown (0x88e1)",
                                                     "Unknown (0x8912)",
+                                                    "Unknown (0x22e3)",
                                                 ):
                                                     block["data"]["packet"][
                                                         "unknown"
