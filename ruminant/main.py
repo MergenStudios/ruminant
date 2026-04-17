@@ -10,6 +10,13 @@ import io
 import urllib.request
 from urllib.parse import urlparse, urlunparse
 
+# can we use mmap?
+use_mmap = "RUMINANT_NO_MMAP" in os.environ
+try:
+    import mmap
+except ModuleNotFoundError:
+    use_mmap = False
+
 # remove limits so we can process big files
 sys.set_int_max_str_digits(0)
 sys.setrecursionlimit(1000000)
@@ -40,12 +47,21 @@ slim = False
 def process(file, walk):
     if not walk:
         # shortcut if walk mode isn't needed
-        if slim:
-            return json.dumps(
-                modules.chew(file), separators=(",", ":"), ensure_ascii=False
-            )
+        if use_mmap:
+            with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                if slim:
+                    return json.dumps(
+                        modules.chew(mm), separators=(",", ":"), ensure_ascii=False
+                    )
+                else:
+                    return json.dumps(modules.chew(mm), indent=2, ensure_ascii=False)
         else:
-            return json.dumps(modules.chew(file), indent=2, ensure_ascii=False)
+            if slim:
+                return json.dumps(
+                    modules.chew(file), separators=(",", ":"), ensure_ascii=False
+                )
+            else:
+                return json.dumps(modules.chew(file), indent=2, ensure_ascii=False)
 
     # we do a binwalk style walk now
     buf = Buf(file)
@@ -396,6 +412,7 @@ def main(dev=False):
                 file.write(blob)
 
         file.seek(0)
+
         with file:
             print(process(file, args.walk))
     else:
