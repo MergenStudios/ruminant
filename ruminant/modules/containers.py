@@ -1841,8 +1841,9 @@ class PcapNgModule(module.RuminantModule):
         packet["more-fragments"] = bool(self.buf.rb(1))
         packet["fragment-offset"] = self.buf.rb(13)
         packet["ttl"] = self.buf.ru8()
+        protocol = self.buf.ru8()
         packet["protocol"] = utils.unraw(
-            self.buf.ru8(),
+            protocol,
             1,
             {
                 0x01: "ICMP",
@@ -1867,7 +1868,34 @@ class PcapNgModule(module.RuminantModule):
         self.buf.pasunit(packet["total-length"] - packet["header-length"])
 
         if packet["more-fragments"] or packet["fragment-offset"] != 0:
-            packet["payload"] = self.buf.rh(self.buf.unit)
+            packet["raw-payload"] = self.buf.rh(self.buf.unit)
+            packet["reassembled-in"] = None
+
+            identifier = (
+                "IPv4 "
+                + packet["source-address"]
+                + " "
+                + packet["destination-address"]
+                + " "
+                + packet["protocol"]
+                + " "
+                + str(packet["identification"])
+            )
+
+            if identifier not in self.reassemble:
+                self.reassemble[identifier] = []
+
+            self.reassemble[identifier].append({
+                "packet": packet,
+                "payload": bytes.fromhex(packet["raw-payload"]),
+                "offset": packet["fragment-offset"] * 8,
+                "length": packet["total-length"] - packet["header-length"],
+                "final": not packet["more-fragments"],
+                "id": self.id - 1,
+                "protocol": protocol,
+            })
+
+            self.try_reassemble(identifier)
         else:
             match packet["protocol"]:
                 case "UDP":
@@ -1879,7 +1907,7 @@ class PcapNgModule(module.RuminantModule):
                 case "IGMP":
                     packet["payload"] = self.read_igmp()
                 case _:
-                    packet["payload"] = self.buf.rh(self.buf.unit)
+                    packet["raw-payload"] = self.buf.rh(self.buf.unit)
                     packet["unknown"] = True
 
         self.buf.sapunit()
@@ -2571,12 +2599,66 @@ class PcapNgModule(module.RuminantModule):
 
         return packet
 
+    def try_reassemble(self, identifier):
+        if identifier not in self.reassemble:
+            return
+
+        parts = self.reassemble[identifier]
+
+        found_final = False
+        length = 0
+        for part in parts:
+            found_final |= part["final"]
+
+            if part["final"]:
+                length = part["offset"] + part["length"]
+
+        if not found_final:
+            return
+
+        span = Span()
+        for part in parts:
+            span.add(part["offset"], part["length"])
+
+        if not (
+            len(span.ranges) == 1
+            and span.ranges[0][0] == 0
+            and span.ranges[0][1] == length
+        ):
+            return
+
+        packet = bytearray(length)
+        for part in parts:
+            packet[part["offset"] : part["offset"] + part["length"]] = part["payload"]
+
+        for part in parts:
+            part["packet"]["reassembled-in"] = parts[-1]["id"]
+
+        # swap in fake buf with IPv4 header
+        buf = self.buf
+        self.buf = Buf(
+            b"\x45\x00"
+            + (len(packet) + 20).to_bytes(2, "big")
+            + b"\x00\x00\x00\x00\x00"
+            + parts[-1]["protocol"].to_bytes(1, "big")
+            + b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+            + packet
+        )
+        self.buf.pasunit(self.buf.available())
+
+        parts[-1]["packet"]["payload"] = self.read_ipv4()["payload"]
+
+        self.buf = buf
+
+        del self.reassemble[identifier]
+
     def chew(self):
         meta = {}
         meta["type"] = "pcapng"
 
         meta["sections"] = []
         self.id = 1
+        self.reassemble = {}
 
         while self.buf.available() > 0:
             interfaces = {}
@@ -2942,7 +3024,9 @@ class PcapNgModule(module.RuminantModule):
                                                     block["data"]["packet"][
                                                         "unknown"
                                                     ] = True
-                                    except Exception:
+                                    except Exception as e:
+                                        if module.debug:
+                                            raise e
                                         self.buf.restore(backup)
                                         self.buf.sapunit()
                                         block["error"] = True
