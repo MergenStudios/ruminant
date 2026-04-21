@@ -1954,7 +1954,62 @@ class PcapNgModule(module.RuminantModule):
                             self.buf.pasunit(record["rdata-length"])
 
                             record["rdata"] = {}
-                            record["rdata"]["address"] = ipaddress.IPv6Address(self.buf.read(16)).compressed
+                            record["rdata"]["address"] = ipaddress.IPv6Address(
+                                self.buf.read(16)
+                            ).compressed
+
+                            self.buf.sapunit()
+                        case "MX":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["preference"] = self.buf.ru16()
+                            record["rdata"]["exchange"] = dns_read_name(base, length)
+
+                            self.buf.sapunit()
+                        case "TXT":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["content"] = self.buf.rs(self.buf.ru8())
+
+                            self.buf.sapunit()
+                        case "CAA":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["flags"] = utils.unpack_flags(
+                                self.buf.ru8(), ((0, "issuer-critical"),)
+                            )
+                            record["rdata"]["tag"] = self.buf.rs(self.buf.ru8())
+                            record["rdata"]["value"] = self.buf.rs(self.buf.unit)
 
                             self.buf.sapunit()
                         case _:
