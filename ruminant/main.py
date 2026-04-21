@@ -11,7 +11,7 @@ import urllib.request
 from urllib.parse import urlparse, urlunparse
 
 # can we use mmap?
-use_mmap = "RUMINANT_NO_MMAP" in os.environ
+use_mmap = "RUMINANT_NO_MMAP" not in os.environ
 try:
     import mmap
 except ModuleNotFoundError:

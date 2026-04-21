@@ -1751,6 +1751,186 @@ class PcapNgModule(module.RuminantModule):
     def identify(buf, ctx):
         return buf.peek(4) == b"\x0a\x0d\x0d\x0a"
 
+    def register_detectors(self):
+        self.detectors = {}
+
+        def register(protocol, ports):
+            def inner(f):
+                if protocol not in self.detectors:
+                    self.detectors[protocol] = []
+
+                self.detectors[protocol].append({"ports": ports, "func": f})
+
+                return f
+
+            return inner
+
+        def dns_read_name(base, unit):
+            length = self.buf.ru8()
+            if length == 0:
+                return None
+
+            if length & 0xc0 == 0xc0:
+                length = ((length & 0x3f) << 8) + self.buf.ru8()
+                with self.buf:
+                    self.buf.seek(base)
+                    self.buf.setunit(unit)
+
+                    self.buf.skip(length)
+
+                    return dns_read_name(base, unit)
+            else:
+                this_part = self.buf.rs(length)
+                next_part = dns_read_name(base, unit)
+
+                if next_part is not None:
+                    this_part = this_part + "." + next_part
+
+                return this_part
+
+        @register("udp", [53])
+        def decode_dns():
+            base, length = self.buf.tell(), self.buf.unit
+
+            packet = {}
+            packet["type"] = "DNS"
+            packet["transaction-id"] = self.buf.ru16()
+            packet["direction"] = ["question", "reply"][self.buf.rb(1)]
+            packet["opcode"] = utils.unraw(
+                self.buf.rb(4), 1, {0x00: "QUERY", 0x01: "IQUERY", 0x02: "STATUS"}, True
+            )
+            packet["authoriative-answer"] = bool(self.buf.rb(1))
+            packet["truncation"] = bool(self.buf.rb(1))
+            packet["recursion-desired"] = bool(self.buf.rb(1))
+            packet["recursion-available"] = bool(self.buf.rb(1))
+            packet["zero"] = self.buf.rb(1)
+            packet["authentic-data"] = bool(self.buf.rb(1))
+            packet["checking-disabled"] = bool(self.buf.rb(1))
+            packet["rcode"] = utils.unraw(
+                self.buf.rb(4),
+                1,
+                {
+                    0x00: "NoError",
+                    0x01: "FormErr",
+                    0x02: "ServFail",
+                    0x03: "NXDomain",
+                    0x04: "NotImp",
+                    0x05: "Refused",
+                    0x06: "YXDomain",
+                    0x07: "YXRRSet",
+                    0x08: "NXRRSet",
+                    0x09: "NotAuth",
+                    0x0a: "NotZone",
+                    0x0b: "DSOTYPENI",
+                },
+                True,
+            )
+            packet["question-count"] = self.buf.ru16()
+            packet["answer-count"] = self.buf.ru16()
+            packet["authority-rr-count"] = self.buf.ru16()
+            packet["additional-rr-count"] = self.buf.ru16()
+
+            packet["questions"] = []
+            for i in range(0, packet["question-count"]):
+                record = {}
+                record["name"] = dns_read_name(base, length)
+
+                record["type"] = utils.unraw(
+                    self.buf.ru16(), 2, constants.DNS_RECORD_TYPES, True
+                )
+                record["class"] = utils.unraw(
+                    self.buf.ru16(),
+                    2,
+                    {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                    True,
+                )
+                packet["questions"].append(record)
+
+            packet["answers"] = []
+            packet["authority-rrs"] = []
+            packet["additional-rrs"] = []
+            for i in range(0, 3):
+                for j in range(
+                    0,
+                    [
+                        packet["answer-count"],
+                        packet["authority-rr-count"],
+                        packet["additional-rr-count"],
+                    ][i],
+                ):
+                    record = {}
+                    record["name"] = dns_read_name(base, length)
+
+                    record["type"] = utils.unraw(
+                        self.buf.ru16(), 2, constants.DNS_RECORD_TYPES, True
+                    )
+
+                    match record["type"]:
+                        case "A":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["ip"] = ".".join([
+                                str(self.buf.ru8()) for k in range(0, 4)
+                            ])
+
+                            self.buf.sapunit()
+
+                        case "OPT":
+                            record["udp-payload-size"] = self.buf.ru16()
+                            record["extended-rcode-and-flags"] = self.buf.ru32()
+
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["options"] = []
+                            while self.buf.unit > 0:
+                                opt = {}
+                                opt["code"] = utils.unraw(
+                                    self.buf.ru16(), 2, {0x000a: "COOKIE"}, True
+                                )
+                                opt["length"] = self.buf.ru16()
+                                opt["data"] = {}
+
+                                self.buf.pasunit(opt["length"])
+
+                                match opt["code"]:
+                                    case "COOKIE":
+                                        opt["data"]["cookie"] = self.buf.rh(
+                                            self.buf.unit
+                                        )
+                                    case _:
+                                        opt["data"]["payload"] = self.buf.rh(
+                                            self.buf.unit
+                                        )
+
+                                self.buf.sapunit()
+
+                                record["rdata"]["options"].append(opt)
+
+                            self.buf.sapunit()
+                        case _:
+                            record["header"] = self.buf.rh(6)
+                            record["rdata-length"] = self.buf.ru16()
+                            record["rdata"] = self.buf.rh(record["rdata-length"])
+
+                    packet[["answers", "authority-rrs", "additional-rrs"][i]].append(
+                        record
+                    )
+
+            return packet
+
     def read_options(self, ctx):
         if self.buf.unit <= 4:
             return []
@@ -1923,7 +2103,28 @@ class PcapNgModule(module.RuminantModule):
         self.buf.pasunit(packet["length"] - 6)
 
         packet["checksum"] = self.buf.ru16()
-        packet["payload"] = self.buf.rh(self.buf.unit)
+
+        detectors = []
+        for detector in self.detectors["udp"]:
+            if packet["destination-port"] in detector["ports"]:
+                detectors.insert(0, detector["func"])
+            else:
+                detectors.append(detector["func"])
+
+        found = False
+        for func in detectors:
+            backup = self.buf.backup()
+
+            try:
+                packet["payload"] = func()
+                assert self.buf.unit == 0
+                found = True
+                break
+            except Exception:
+                self.buf.restore(backup)
+
+        if not found:
+            packet["payload"] = self.buf.rh(self.buf.unit)
 
         self.buf.sapunit()
 
@@ -2693,6 +2894,7 @@ class PcapNgModule(module.RuminantModule):
         meta["sections"] = []
         self.id = 1
         self.reassemble = {}
+        self.register_detectors()
 
         while self.buf.available() > 0:
             interfaces = {}

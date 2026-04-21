@@ -1158,6 +1158,8 @@ class IsoModule(module.RuminantModule):
                 atom["data"]["payload"] = self.buf.rs(length)
             else:
                 atom["data"]["payload"] = self.buf.readunit().decode("latin-1")
+        elif typ in ("FIRM", "LENS"):
+            atom["data"]["string"] = self.buf.rs(self.buf.unit)
         elif typ in ("hint", "cdsc", "font", "hind", "vdep", "vplx", "subt", "cdep"):
             atom["data"]["track-id"] = self.buf.ru32()
         # video sample boxes
