@@ -1920,10 +1920,48 @@ class PcapNgModule(module.RuminantModule):
                                 record["rdata"]["options"].append(opt)
 
                             self.buf.sapunit()
+                        case "SOA":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["mname"] = dns_read_name(base, length)
+                            record["rdata"]["rname"] = dns_read_name(base, length)
+                            record["rdata"]["serial"] = self.buf.ru32()
+                            record["rdata"]["retry"] = self.buf.ru32()
+                            record["rdata"]["expire"] = self.buf.ru32()
+                            record["rdata"]["minimum"] = self.buf.ru32()
+
+                            self.buf.sapunit()
+                        case "AAAA":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["address"] = ipaddress.IPv6Address(self.buf.read(16)).compressed
+
+                            self.buf.sapunit()
                         case _:
                             record["header"] = self.buf.rh(6)
                             record["rdata-length"] = self.buf.ru16()
                             record["rdata"] = self.buf.rh(record["rdata-length"])
+                            record["unknown"] = True
 
                     packet[["answers", "authority-rrs", "additional-rrs"][i]].append(
                         record
