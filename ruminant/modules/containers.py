@@ -1884,10 +1884,13 @@ class PcapNgModule(module.RuminantModule):
                             ])
 
                             self.buf.sapunit()
-
                         case "OPT":
                             record["udp-payload-size"] = self.buf.ru16()
-                            record["extended-rcode-and-flags"] = self.buf.ru32()
+                            record["extended-rcode"] = self.buf.ru8()
+                            record["edns0-version"] = self.buf.ru8()
+                            record["flags"] = utils.unpack_flags(
+                                self.buf.ru16(), ((15, "DO"),)
+                            )
 
                             record["rdata-length"] = self.buf.ru16()
 
@@ -2012,6 +2015,209 @@ class PcapNgModule(module.RuminantModule):
                             record["rdata"]["value"] = self.buf.rs(self.buf.unit)
 
                             self.buf.sapunit()
+                        case "DNSKEY":
+                            # https://datatracker.ietf.org/doc/html/rfc4034
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            key_tag = 0
+                            with self.buf:
+                                for j in range(0, self.buf.unit):
+                                    key_tag += (
+                                        self.buf.ru8() if j % 2 else self.buf.ru8() << 8
+                                    )
+
+                                key_tag = (
+                                    (key_tag & 0xffff) + (key_tag >> 16)
+                                ) & 0xffff
+
+                            record["rdata"] = {}
+                            temp = self.buf.ru16()
+                            record["rdata"]["flags"] = utils.unpack_flags(
+                                temp,
+                                (
+                                    (0, "key-signing-key"),
+                                    (7, "zone-key"),
+                                    (15, "secure-entry-point"),
+                                ),
+                            )
+                            if "key-signing-key" in record["rdata"]["flags"]["names"]:
+                                record["rdata"]["flags"]["key-signing-key"] = (
+                                    temp & 0b1111111001111110
+                                )
+
+                            record["rdata"]["protocol"] = self.buf.ru8()
+                            match record["rdata"]["protocol"]:
+                                case 3:
+                                    record["rdata"]["algorithm"] = utils.unraw(
+                                        self.buf.ru8(),
+                                        1,
+                                        constants.DNSSEC_ALGORITHMS,
+                                        True,
+                                    )
+                                    record["rdata"]["key-tag"] = key_tag
+                                    record["rdata"]["key"] = self.buf.rh(self.buf.unit)
+                                case _:
+                                    record["rdata"]["rest"] = self.buf.rh(self.buf.unit)
+                                    record["unknown"] = True
+
+                            self.buf.sapunit()
+                        case "RRSIG":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["type-covered"] = utils.unraw(
+                                self.buf.ru16(), 2, constants.DNS_RECORD_TYPES, True
+                            )
+                            record["rdata"]["algorithm"] = utils.unraw(
+                                self.buf.ru8(), 1, constants.DNSSEC_ALGORITHMS, True
+                            )
+                            record["rdata"]["labels"] = self.buf.ru8()
+                            record["rdata"]["original-ttl"] = self.buf.ru32()
+                            record["rdata"]["signature-expiration"] = (
+                                utils.unix_to_date(self.buf.ru32())
+                            )
+                            record["rdata"]["signature-inception"] = utils.unix_to_date(
+                                self.buf.ru32()
+                            )
+                            record["rdata"]["key-tag"] = self.buf.ru16()
+                            record["rdata"]["signers-name"] = dns_read_name(
+                                base, length
+                            )
+                            record["rdata"]["signature"] = self.buf.rh(self.buf.unit)
+
+                            self.buf.sapunit()
+                        case "HTTPS":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["priority"] = self.buf.ru16()
+                            record["rdata"]["target-name"] = dns_read_name(base, length)
+
+                            record["rdata"]["params"] = []
+                            while self.buf.unit > 0:
+                                param = {}
+                                param["key"] = utils.unraw(
+                                    self.buf.ru16(),
+                                    2,
+                                    {
+                                        0x0000: "mandatory",
+                                        0x0001: "alpn",
+                                        0x0002: "no-default-alpn",
+                                        0x0003: "port",
+                                        0x0004: "ipv4hint",
+                                        0x0005: "ech",
+                                        0x0006: "ipv6hint",
+                                    },
+                                    True,
+                                )
+                                param["length"] = self.buf.ru16()
+
+                                self.buf.pasunit(param["length"])
+
+                                match param["key"]:
+                                    case "alpn":
+                                        param["value"] = []
+                                        while self.buf.unit > 0:
+                                            param["value"].append(
+                                                self.buf.rs(self.buf.ru8())
+                                            )
+                                    case _:
+                                        param["value"] = self.buf.rh(param["length"])
+                                        param["unknown"] = True
+
+                                self.buf.sapunit()
+
+                                record["rdata"]["params"].append(param)
+
+                            self.buf.sapunit()
+                        case "NS":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["nsdname"] = dns_read_name(base, length)
+
+                            self.buf.sapunit()
+                        case "SSHFP":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["algorithm"] = utils.unraw(
+                                self.buf.ru8(),
+                                1,
+                                {0x00: "reserved", 0x01: "RSA", 0x02: "DSS"},
+                                True,
+                            )
+                            record["rdata"]["fingerprint-type"] = utils.unraw(
+                                self.buf.ru8(),
+                                1,
+                                {0x00: "reserved", 0x01: "SHA-1"},
+                                True,
+                            )
+                            record["rdata"]["fingerprint"] = self.buf.rh(self.buf.unit)
+
+                            self.buf.sapunit()
+                        case "OPENPGPKEY":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            with self.buf.subunit():
+                                record["rdata"]["key"] = chew(self.buf)
+
+                            self.buf.sapunit()
                         case _:
                             record["header"] = self.buf.rh(6)
                             record["rdata-length"] = self.buf.ru16()
@@ -2048,6 +2254,7 @@ class PcapNgModule(module.RuminantModule):
                         0x0002: "Interface",
                         0x0003: "Description",
                         0x0009: "Timestamp resolution",
+                        0x000b: "Filter",
                         0x000c: "OS",
                     },
                     "Interface Statistics": {
@@ -2080,6 +2287,11 @@ class PcapNgModule(module.RuminantModule):
                         "base": 2 if temp & 0x80 else 10,
                         "exponent": -(temp & 0x7f),
                         "value": (2 if temp & 0x80 else 10) ** -(temp & 0x7f),
+                    }
+                case "Interface Description", "Filter":
+                    opt["data"] = {
+                        "code": self.buf.ru8(),
+                        "filter": self.buf.rs(self.buf.unit),
                     }
                 case (
                     "Interface Statistics",

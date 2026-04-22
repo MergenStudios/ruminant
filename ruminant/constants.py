@@ -8172,3 +8172,22 @@ DNS_RECORD_TYPES = dns_records = {
     0x8000: "TA",
     0x8001: "DLV",
 }
+
+DNSSEC_ALGORITHMS = {
+    0x00: "DELETE",
+    0x01: "RSAMD5",
+    0x02: "DH",
+    0x03: "DSA",
+    0x05: "RSASHA1",
+    0x06: "DSA-NSEC3-SHA1",
+    0x07: "RSASHA1-NSEC3-SHA1",
+    0x08: "RSASHA256",
+    0x0a: "RSASHA512",
+    0x0c: "ECC-GOST",
+    0x0d: "ECDSAP256SHA256",
+    0x0e: "ECDSAP384SHA384",
+    0x0f: "ED25519",
+    0x10: "ED448",
+    0x11: "SM2SM3",
+    0x17: "ECC-GOST12",
+}
