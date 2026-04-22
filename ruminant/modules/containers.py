@@ -2218,6 +2218,25 @@ class PcapNgModule(module.RuminantModule):
                                 record["rdata"]["key"] = chew(self.buf)
 
                             self.buf.sapunit()
+                        case "SRV":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["priority"] = self.buf.ru16()
+                            record["rdata"]["weight"] = self.buf.ru16()
+                            record["rdata"]["port"] = self.buf.ru16()
+                            record["rdata"]["target"] = dns_read_name(base, length)
+
+                            self.buf.sapunit()
                         case _:
                             record["header"] = self.buf.rh(6)
                             record["rdata-length"] = self.buf.ru16()
