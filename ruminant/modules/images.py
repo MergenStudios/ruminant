@@ -3183,3 +3183,140 @@ class IcoModule(module.RuminantModule):
         self.buf.seek(max_offset)
 
         return meta
+
+
+@module.register
+class XcfModule(module.RuminantModule):
+    dev = True
+    desc = "GIMP XCF files."
+
+    def identify(buf, ctx):
+        return buf.peek(9) == b"gimp xcf "
+
+    def chew(self):
+        # https://developer.gimp.org/core/standards/xcf/#the-image-structure
+        meta = {}
+        meta["type"] = "xcf"
+
+        self.buf.skip(9)
+        meta["version"] = self.buf.rs(5)
+        meta["width"] = self.buf.ru32()
+        meta["height"] = self.buf.ru32()
+        meta["base-type"] = utils.unraw(
+            self.buf.ru32(),
+            4,
+            {0x00000000: "RGB", 0x00000001: "Grayscale", 0x00000002: "Indexed color"},
+            True,
+        )
+        meta["precision"] = utils.unraw(
+            self.buf.ru32(),
+            4,
+            {
+                0x00000000: "8-bit gamma integer",
+                0x00000001: "16-bit gamma integer",
+                0x00000002: "32-bit linear integer",
+                0x00000003: "16-bit linear floating point",
+                0x00000004: "32-bit linear floating point",
+                0x00000064: "8-bit linear integer",
+                0x00000096: "8-bit gamma integer",
+                0x000000c8: "16-bit linear integer",
+                0x000000fa: "16-bit gamma integer",
+                0x0000012c: "32-bit linear integer",
+                0x0000015e: "32-bit gamma integer",
+                0x00000190: "16-bit linear floating point",
+                0x000001c2: "16-bit gamma floating point",
+                0x000001f4: "16-bit linear floating point",
+                0x00000226: "16-bit gamma floating point",
+                0x00000258: "32-bit linear floating point",
+                0x0000028a: "32-bit gamma floating point",
+                0x000002bc: "64-bit linear floating point",
+                0x000002ee: "64-bit gamma floating point",
+            },
+            True,
+        )
+
+        meta["properties"] = []
+        while True:
+            prop = {}
+            prop["type"] = utils.unraw(
+                self.buf.ru32(),
+                4,
+                {
+                    0x00000000: "END",
+                    0x00000011: "COMPRESSION",
+                    0x00000013: "RESOLUTION",
+                    0x00000014: "TATTOO",
+                    0x00000015: "PARASITES",
+                    0x00000016: "UNIT",
+                },
+                True,
+            )
+            prop["length"] = self.buf.ru32()
+
+            self.buf.pasunit(prop["length"])
+
+            prop["value"] = {}
+            match prop["type"]:
+                case "COMPRESSION":
+                    prop["value"]["compression"] = utils.unraw(
+                        self.buf.ru8(),
+                        1,
+                        {0x00: "None", 0x01: "RLE", 0x02: "zlib"},
+                        True,
+                    )
+                case "RESOLUTION":
+                    prop["value"]["horizontal-ppi"] = self.buf.rf32()
+                    prop["value"]["vertical-ppi"] = self.buf.rf32()
+                case "TATTOO":
+                    prop["value"]["id"] = self.buf.ru32()
+                case "UNIT":
+                    prop["value"]["unit"] = utils.unraw(
+                        self.buf.ru32(),
+                        4,
+                        {
+                            0x00000001: "Inches",
+                            0x00000002: "Millimeters",
+                            0x00000003: "Points",
+                            0x00000004: "Picas",
+                        },
+                        True,
+                    )
+                case "PARASITES":
+                    prop["value"]["entries"] = []
+                    while self.buf.unit > 0:
+                        entry = {}
+                        entry["name"] = self.buf.rs(self.buf.ru32())
+                        entry["flags"] = self.buf.ru32()
+                        entry["length"] = self.buf.ru32()
+
+                        self.buf.pasunit(entry["length"])
+
+                        match entry["name"]:
+                            case "gimp-image-grid":
+                                entry["value"] = self.buf.rs(self.buf.unit).split("\n")
+                            case "gimp-image-metadata":
+                                entry["value"] = utils.xml_to_dict(
+                                    self.buf.rs(self.buf.unit)
+                                )
+                            case "jpeg-settings":
+                                entry["value"] = self.buf.rh(self.buf.unit)
+                            case _:
+                                entry["value"] = self.buf.rh(self.buf.unit)
+                                entry["unknown"] = True
+
+                        self.buf.sapunit()
+
+                        prop["value"]["entries"].append(entry)
+                case "END":
+                    pass
+                case _:
+                    prop["value"]["payload"] = self.buf.rh(self.buf.unit)
+                    prop["unknown"] = True
+
+            self.buf.sapunit()
+            meta["properties"].append(prop)
+
+            if prop["type"] == "END":
+                break
+
+        return meta
