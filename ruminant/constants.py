@@ -8191,3 +8191,12 @@ DNSSEC_ALGORITHMS = {
     0x11: "SM2SM3",
     0x17: "ECC-GOST12",
 }
+
+GIMP_IMAGE_TYPES = {
+    0x00000000: "RGB color without alpha",
+    0x00000001: "RGB color with alpha",
+    0x00000002: "Grayscale without alpha",
+    0x00000003: "Grayscale with alpha",
+    0x00000004: "Indexed without alpha",
+    0x00000005: "Indexed with alpha",
+}

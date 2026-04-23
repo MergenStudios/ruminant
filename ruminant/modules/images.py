@@ -3193,49 +3193,11 @@ class XcfModule(module.RuminantModule):
     def identify(buf, ctx):
         return buf.peek(9) == b"gimp xcf "
 
-    def chew(self):
-        # https://developer.gimp.org/core/standards/xcf/#the-image-structure
-        meta = {}
-        meta["type"] = "xcf"
+    def rp(self):
+        return self.buf.ru64() if self.wide else self.buf.ru32()
 
-        self.buf.skip(9)
-        meta["version"] = self.buf.rs(5)
-        meta["width"] = self.buf.ru32()
-        meta["height"] = self.buf.ru32()
-        meta["base-type"] = utils.unraw(
-            self.buf.ru32(),
-            4,
-            {0x00000000: "RGB", 0x00000001: "Grayscale", 0x00000002: "Indexed color"},
-            True,
-        )
-        meta["precision"] = utils.unraw(
-            self.buf.ru32(),
-            4,
-            {
-                0x00000000: "8-bit gamma integer",
-                0x00000001: "16-bit gamma integer",
-                0x00000002: "32-bit linear integer",
-                0x00000003: "16-bit linear floating point",
-                0x00000004: "32-bit linear floating point",
-                0x00000064: "8-bit linear integer",
-                0x00000096: "8-bit gamma integer",
-                0x000000c8: "16-bit linear integer",
-                0x000000fa: "16-bit gamma integer",
-                0x0000012c: "32-bit linear integer",
-                0x0000015e: "32-bit gamma integer",
-                0x00000190: "16-bit linear floating point",
-                0x000001c2: "16-bit gamma floating point",
-                0x000001f4: "16-bit linear floating point",
-                0x00000226: "16-bit gamma floating point",
-                0x00000258: "32-bit linear floating point",
-                0x0000028a: "32-bit gamma floating point",
-                0x000002bc: "64-bit linear floating point",
-                0x000002ee: "64-bit gamma floating point",
-            },
-            True,
-        )
-
-        meta["properties"] = []
+    def read_properties(self):
+        properties = []
         while True:
             prop = {}
             prop["type"] = utils.unraw(
@@ -3243,14 +3205,28 @@ class XcfModule(module.RuminantModule):
                 4,
                 {
                     0x00000000: "END",
+                    0x00000002: "ACTIVE_LAYER",
+                    0x00000006: "OPACITY",
+                    0x00000008: "VISIBLE",
+                    0x00000009: "LINKED",
+                    0x0000000a: "LOCK_ALPHA",
+                    0x0000000b: "APPLY_MASK",
+                    0x0000000c: "EDIT_MASK",
+                    0x0000000d: "SHOW_MASK",
+                    0x0000000f: "OFFSETS",
                     0x00000011: "COMPRESSION",
                     0x00000013: "RESOLUTION",
                     0x00000014: "TATTOO",
                     0x00000015: "PARASITES",
                     0x00000016: "UNIT",
+                    0x0000001c: "LOCK_CONTENT",
+                    0x00000020: "LOCK_POSITION",
+                    0x00000021: "FLOAT_OPACITY",
+                    0x00000022: "COLOR_TAG",
                 },
                 True,
             )
+
             prop["length"] = self.buf.ru32()
 
             self.buf.pasunit(prop["length"])
@@ -3307,16 +3283,133 @@ class XcfModule(module.RuminantModule):
                         self.buf.sapunit()
 
                         prop["value"]["entries"].append(entry)
-                case "END":
+                case "OPACITY":
+                    prop["value"][prop["type"].lower().replace("_", "-")] = (
+                        self.buf.ru32()
+                    )
+                case (
+                    "VISIBLE"
+                    | "LINKED"
+                    | "LOCK_CONTENT"
+                    | "LOCK_ALPHA"
+                    | "LOCK_POSITION"
+                    | "APPLY_MASK"
+                    | "EDIT_MASK"
+                    | "SHOW_MASK"
+                ):
+                    prop["value"][prop["type"].lower().replace("_", "-")] = bool(
+                        self.buf.ru32()
+                    )
+                case "FLOAT_OPACITY":
+                    prop["value"]["opacity"] = self.buf.rf32()
+                case "COLOR_TAG":
+                    prop["value"]["color"] = utils.unraw(
+                        self.buf.ru32(),
+                        4,
+                        {
+                            0x00000000: "None",
+                            0x00000001: "Blue",
+                            0x00000002: "Green",
+                            0x00000003: "Yellow",
+                            0x00000004: "Orange",
+                            0x00000005: "Brown",
+                            0x00000006: "Red",
+                            0x00000007: "Violet",
+                            0x00000008: "Gray",
+                        },
+                        True,
+                    )
+                case "OFFSETS":
+                    prop["value"]["xoffset"] = self.buf.ru32()
+                    prop["value"]["yoffset"] = self.buf.ru32()
+                case "END" | "ACTIVE_LAYER":
                     pass
                 case _:
                     prop["value"]["payload"] = self.buf.rh(self.buf.unit)
                     prop["unknown"] = True
 
             self.buf.sapunit()
-            meta["properties"].append(prop)
+            properties.append(prop)
 
             if prop["type"] == "END":
                 break
+
+        return properties
+
+    def chew(self):
+        # https://developer.gimp.org/core/standards/xcf/#the-image-structure
+        meta = {}
+        meta["type"] = "xcf"
+
+        self.buf.skip(9)
+        meta["version"] = self.buf.rs(5)
+
+        self.wide = meta["version"][0] == "v" and int(meta["version"][1:]) >= 11
+
+        meta["width"] = self.buf.ru32()
+        meta["height"] = self.buf.ru32()
+        meta["base-type"] = utils.unraw(
+            self.buf.ru32(),
+            4,
+            {0x00000000: "RGB", 0x00000001: "Grayscale", 0x00000002: "Indexed color"},
+            True,
+        )
+        meta["precision"] = utils.unraw(
+            self.buf.ru32(),
+            4,
+            {
+                0x00000000: "8-bit gamma integer",
+                0x00000001: "16-bit gamma integer",
+                0x00000002: "32-bit linear integer",
+                0x00000003: "16-bit linear floating point",
+                0x00000004: "32-bit linear floating point",
+                0x00000064: "8-bit linear integer",
+                0x00000096: "8-bit gamma integer",
+                0x000000c8: "16-bit linear integer",
+                0x000000fa: "16-bit gamma integer",
+                0x0000012c: "32-bit linear integer",
+                0x0000015e: "32-bit gamma integer",
+                0x00000190: "16-bit linear floating point",
+                0x000001c2: "16-bit gamma floating point",
+                0x000001f4: "16-bit linear floating point",
+                0x00000226: "16-bit gamma floating point",
+                0x00000258: "32-bit linear floating point",
+                0x0000028a: "32-bit gamma floating point",
+                0x000002bc: "64-bit linear floating point",
+                0x000002ee: "64-bit gamma floating point",
+            },
+            True,
+        )
+
+        meta["properties"] = self.read_properties()
+
+        meta["layers"] = []
+        while True:
+            ptr = self.rp()
+            if ptr == 0:
+                break
+
+            meta["layers"].append({"offset": ptr})
+
+        meta["channels"] = []
+        while True:
+            ptr = self.rp()
+            if ptr == 0:
+                break
+
+            meta["channels"].append({"offset": ptr})
+
+        for layer in meta["layers"]:
+            self.buf.seek(layer["offset"])
+
+            layer["width"] = self.buf.ru32()
+            layer["height"] = self.buf.ru32()
+            layer["type"] = utils.unraw(
+                self.buf.ru32(), 4, constants.GIMP_IMAGE_TYPES, True
+            )
+            layer["name"] = self.buf.rs(self.buf.ru32())
+            layer["properties"] = self.read_properties()
+            layer["hierachy-pointer"] = self.rp()
+            layer["mask-pointer"] = self.rp()
 
         return meta
