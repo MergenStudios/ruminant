@@ -3207,6 +3207,7 @@ class XcfModule(module.RuminantModule):
                     0x00000000: "END",
                     0x00000002: "ACTIVE_LAYER",
                     0x00000006: "OPACITY",
+                    0x00000007: "MODE",
                     0x00000008: "VISIBLE",
                     0x00000009: "LINKED",
                     0x0000000a: "LOCK_ALPHA",
@@ -3223,6 +3224,9 @@ class XcfModule(module.RuminantModule):
                     0x00000020: "LOCK_POSITION",
                     0x00000021: "FLOAT_OPACITY",
                     0x00000022: "COLOR_TAG",
+                    0x00000023: "COMPOSITE_MODE",
+                    0x00000024: "COMPOSITE_SPACE",
+                    0x00000025: "BLEND_SPACE",
                 },
                 True,
             )
@@ -3322,6 +3326,105 @@ class XcfModule(module.RuminantModule):
                 case "OFFSETS":
                     prop["value"]["xoffset"] = self.buf.ru32()
                     prop["value"]["yoffset"] = self.buf.ru32()
+                case "MODE":
+                    prop["value"]["mode"] = utils.unraw(
+                        self.buf.ru32(),
+                        4,
+                        {
+                            0x00000000: "Normal (legacy)",
+                            0x00000001: "Dissolve (legacy)",
+                            0x00000002: "Behind (legacy)",
+                            0x00000003: "Multiply (legacy)",
+                            0x00000004: "Screen (legacy)",
+                            0x00000005: "Old broken Overlay",
+                            0x00000006: "Difference (legacy)",
+                            0x00000007: "Addition (legacy)",
+                            0x00000008: "Subtract (legacy)",
+                            0x00000009: "Darken only (legacy)",
+                            0x0000000a: "Lighten only (legacy)",
+                            0x0000000b: "Hue (HSV) (legacy)",
+                            0x0000000c: "Saturation (HSV) (legacy)",
+                            0x0000000d: "Color (HSL) (legacy)",
+                            0x0000000e: "Value (HSV) (legacy)",
+                            0x0000000f: "Divide (legacy)",
+                            0x00000010: "Dodge (legacy)",
+                            0x00000011: "Burn (legacy)",
+                            0x00000012: "Hard Light (legacy)",
+                            0x00000013: "Soft light (legacy)",
+                            0x00000014: "Grain extract (legacy)",
+                            0x00000015: "Grain merge (legacy)",
+                            0x00000016: "Color erase (legacy)",
+                            0x00000017: "Overlay",
+                            0x00000018: "Hue (LCH)",
+                            0x00000019: "Chroma (LCH)",
+                            0x0000001a: "Color (LCH)",
+                            0x0000001b: "Lightness (LCH)",
+                            0x0000001c: "Normal",
+                            0x0000001d: "Behind",
+                            0x0000001e: "Multiply",
+                            0x0000001f: "Screen",
+                            0x00000020: "Difference",
+                            0x00000021: "Addition",
+                            0x00000022: "Subtract",
+                            0x00000023: "Darken only",
+                            0x00000024: "Lighten only",
+                            0x00000025: "Hue (HSV)",
+                            0x00000026: "Saturation (HSV)",
+                            0x00000027: "Color (HSL)",
+                            0x00000028: "Value (HSV)",
+                            0x00000029: "Divide",
+                            0x0000002a: "Dodge",
+                            0x0000002b: "Burn",
+                            0x0000002c: "Hard light",
+                            0x0000002d: "Soft light",
+                            0x0000002e: "Grain extract",
+                            0x0000002f: "Grain merge",
+                            0x00000030: "Vivid light",
+                            0x00000031: "Pin light",
+                            0x00000032: "Linear light",
+                            0x00000033: "Hard mix",
+                            0x00000034: "Exclusion",
+                            0x00000035: "Linear burn",
+                            0x00000036: "Luma/Luminance darken only",
+                            0x00000037: "Luma/Luminance lighten only",
+                            0x00000038: "Luminance",
+                            0x00000039: "Color erase",
+                            0x0000003a: "Erase",
+                            0x0000003b: "Merge",
+                            0x0000003c: "Split",
+                            0x0000003d: "Pass through",
+                        },
+                        True,
+                    )
+                case "BLEND_SPACE" | "COMPOSITE_SPACE":
+                    temp = self.buf.ri32()
+                    prop["value"]["space"] = utils.unraw(
+                        abs(temp),
+                        4,
+                        {
+                            0x00000000: "None",
+                            0x00000001: "RGB (linear)",
+                            0x00000002: "RGB (from color profile)",
+                            0x00000003: "LAB",
+                            0x00000004: "RGB (perceptual)",
+                        },
+                        True,
+                    )
+                    prop["value"]["auto"] = temp < 0
+                case "COMPOSITE_MODE":
+                    temp = self.buf.ri32()
+                    prop["value"]["mode"] = utils.unraw(
+                        abs(temp),
+                        4,
+                        {
+                            0x00000001: "Union",
+                            0x00000002: "Clip to backdrop",
+                            0x00000003: "Clip to layer",
+                            0x00000004: "Intersection",
+                        },
+                        True,
+                    )
+                    prop["value"]["auto"] = temp < 0
                 case "END" | "ACTIVE_LAYER":
                     pass
                 case _:
