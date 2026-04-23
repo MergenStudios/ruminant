@@ -3114,3 +3114,72 @@ class ExrModule(module.RuminantModule):
         self.buf.skip(self.buf.ru32l())
 
         return meta
+
+
+@module.register
+class IcoModule(module.RuminantModule):
+    desc = "Microsoft ICO files."
+
+    def identify(buf, ctx):
+        if buf.available() < 6:
+            return False
+
+        if buf.pu32() not in (256, 512):
+            return False
+
+        with buf:
+            buf.skip(4)
+            count = buf.ru16l()
+
+            if count == 0 or buf.available() < count * 16:
+                return False
+
+            max_offset = 0
+            for i in range(0, count):
+                buf.skip(3)
+                if buf.ru8() != 0:
+                    return False
+
+                buf.skip(4)
+                max_offset = max(max_offset, buf.ru32l() + buf.ru32l())
+
+            if buf.size() < max_offset:
+                return False
+
+        return True
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "ico"
+
+        self.buf.skip(2)
+        meta["type"] = utils.unraw(
+            self.buf.ru16l(), 2, {0x01: "ICO", 0x02: "CUR"}, True
+        )
+
+        meta["count"] = self.buf.ru16l()
+        meta["entries"] = []
+        for i in range(0, meta["count"]):
+            entry = {}
+            entry["width"] = self.buf.ru8()
+            entry["height"] = self.buf.ru8()
+            entry["color-count"] = self.buf.ru8()
+            entry["reserved"] = self.buf.ru8()
+            entry["planes"] = self.buf.ru16l()
+            entry["bit-count"] = self.buf.ru16l()
+            entry["bytes-in-res"] = self.buf.ru32l()
+            entry["image-offset"] = self.buf.ru32l()
+
+            meta["entries"].append(entry)
+
+        max_offset = self.buf.tell()
+        for entry in meta["entries"]:
+            max_offset = max(max_offset, entry["image-offset"] + entry["bytes-in-res"])
+
+            self.buf.seek(entry["image-offset"])
+            with self.buf.sub(entry["bytes-in-res"]):
+                entry["blob"] = chew(self.buf)
+
+        self.buf.seek(max_offset)
+
+        return meta

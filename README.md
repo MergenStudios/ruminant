@@ -118,6 +118,7 @@ Ruminant is still in early alpha but it can already process the following file t
 * GGUF files
 * pcapng files
 * OpenStreetMap protobuf files
+* ico files
 
 # How do I install it?
 Run `pip3 install ruminant`.
