@@ -1151,6 +1151,16 @@ class IsoModule(module.RuminantModule):
                 self.buf.ru8(), ((0, "little-endian"),)
             )
             atom["data"]["sample-size"] = self.buf.ru8()
+        elif typ == "CNCV":
+            atom["data"]["version-string"] = self.buf.rs(self.buf.unit)
+        elif typ == "CNDM":
+            atom["data"]["values"] = [
+                self.buf.ri16() for i in range(0, self.buf.unit, 2)
+            ]
+        elif typ == "CNTH":
+            self.buf.skip(8)
+            with self.buf.subunit():
+                atom["data"]["content"] = chew(self.buf)
         elif typ[0] == "©" or typ in ("iods", "SDLN", "smrd"):
             if typ[:2] == "©T" and self.buf.pu16() == self.buf.unit - 4:
                 length = self.buf.ru16()
