@@ -646,8 +646,13 @@ def decode(*args, **kwargs):
 
 
 # lookup name in a dict or present a fallback string
-def unraw(i, width, choices, **kwargs):
-    choices.get(i, f"Unknown (0x{hex(i)[2:].zfill(width * 2)})")
+def unraw(i, width, choices, short=False):
+    if short:
+        # short form, just a string
+        return choices.get(i, f"Unknown (0x{hex(i)[2:].zfill(width * 2)})")
+    else:
+        # long form that includes raw value
+        return {"raw": i, "name": choices.get(i, "Unknown")}
 
 
 # read big integer for PGP
