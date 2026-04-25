@@ -470,3 +470,281 @@ class ID3v2Module(module.RuminantModule):
             self.buf.skip(10)
 
         return meta
+
+
+@module.register
+class Mp3Module(module.RuminantModule):
+    desc = "Raw MP3 files."
+
+    def identify(buf, ctx):
+        if buf.available() < 4:
+            return False
+
+        if (
+            buf.pu32() & 0b11111111111_00_11_0_0000_00_0_000000000
+            == 0b11111111111_00_01_0_0000_00_0_000000000
+        ):
+            return (buf.pu32() >> 12) & 0b1111 != 0b1111 and (
+                buf.pu32() >> 10
+            ) & 0b11 != 0b11
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "mp3"
+
+        meta["frames"] = []
+        while Mp3Module.identify(self.buf, {}):
+            frame = {}
+
+            self.buf.rb(11)
+            frame["version"] = utils.unraw(
+                self.buf.rb(2),
+                1,
+                {0b00: "MPEG-2.5", 0b10: "MPEG-2", 0b11: "MPEG-1"},
+                True,
+            )
+            frame["layer"] = utils.unraw(self.buf.rb(2), 1, {0b01: "Layer III"}, True)
+            frame["error-protection"] = self.buf.rb(1) == 0
+            frame["bitrate"] = {
+                "MPEG-1": [
+                    None,
+                    32,
+                    40,
+                    48,
+                    56,
+                    64,
+                    80,
+                    96,
+                    112,
+                    128,
+                    160,
+                    192,
+                    224,
+                    256,
+                    320,
+                    -1,
+                ],
+                "MPEG-2": [
+                    None,
+                    8,
+                    16,
+                    24,
+                    32,
+                    40,
+                    48,
+                    56,
+                    64,
+                    80,
+                    96,
+                    112,
+                    128,
+                    144,
+                    160,
+                    -1,
+                ],
+                "MPEG-2.5": [
+                    None,
+                    8,
+                    16,
+                    24,
+                    32,
+                    40,
+                    48,
+                    56,
+                    64,
+                    80,
+                    96,
+                    112,
+                    128,
+                    144,
+                    160,
+                    -1,
+                ],
+            }[frame["version"]][self.buf.rb(4)]
+            frame["frequency"] = {
+                "MPEG-1": [44100, 48000, 32000, -1],
+                "MPEG-2": [22050, 24000, 16000, -1],
+                "MPEG-2.5": [11025, 12000, 8000, -1],
+            }[frame["version"]][self.buf.rb(2)]
+            frame["padding"] = self.buf.rb(1)
+            frame["private"] = self.buf.rb(1)
+            frame["mode"] = utils.unraw(
+                self.buf.rb(2),
+                1,
+                {
+                    0b00: "Stereo",
+                    0b01: "Joint Stereo",
+                    0b10: "Dual Channel",
+                    0b11: "Single Channel",
+                },
+                True,
+            )
+            frame["mode-extension"] = self.buf.rb(2)
+            frame["copyrighted"] = bool(self.buf.rb(1))
+            frame["original"] = bool(self.buf.rb(1))
+            frame["emphasis"] = self.buf.rb(2)
+
+            self.buf.skip(
+                (
+                    (144 if frame["version"] == "MPEG-1" else 72)
+                    * frame["bitrate"]
+                    * 1000
+                )
+                // frame["frequency"]
+                + frame["padding"]
+                - 4
+            )
+
+            meta["frames"].append(frame)
+
+        if self.buf.available() >= 128 and self.buf.peek(3) == b"TAG":
+            self.buf.skip(3)
+
+            meta["footer"] = {}
+            meta["footer"]["title"] = self.buf.rs(30)
+            meta["footer"]["artist"] = self.buf.rs(30)
+            meta["footer"]["album"] = self.buf.rs(30)
+            meta["footer"]["year"] = self.buf.rs(4)
+
+            if self.buf.peek(30)[28] == 0:
+                meta["footer"]["comment"] = self.buf.rs(29)
+                meta["footer"]["track-number"] = self.buf.ru8()
+            else:
+                meta["footer"]["comment"] = self.buf.rs(30)
+
+            meta["footer"]["genre"] = utils.unraw(
+                self.buf.ru8(),
+                1,
+                {
+                    0x00: "Blues",
+                    0x01: "Classic Rock",
+                    0x02: "Country",
+                    0x03: "Dance",
+                    0x04: "Disco",
+                    0x05: "Funk",
+                    0x06: "Grunge",
+                    0x07: "Hip-Hop",
+                    0x08: "Jazz",
+                    0x09: "Metal",
+                    0x0a: "New Age",
+                    0x0b: "Oldies",
+                    0x0c: "Other",
+                    0x0d: "Pop",
+                    0x0e: "R&B",
+                    0x0f: "Rap",
+                    0x10: "Reggae",
+                    0x11: "Rock",
+                    0x12: "Techno",
+                    0x13: "Industrial",
+                    0x14: "Alternative",
+                    0x15: "Ska",
+                    0x16: "Death Metal",
+                    0x17: "Pranks",
+                    0x18: "Soundtrack",
+                    0x19: "Euro-Techno",
+                    0x1a: "Ambient",
+                    0x1b: "Trip-Hop",
+                    0x1c: "Vocal",
+                    0x1d: "Jazz+Funk",
+                    0x1e: "Fusion",
+                    0x1f: "Trance",
+                    0x20: "Classical",
+                    0x21: "Instrumental",
+                    0x22: "Acid",
+                    0x23: "House",
+                    0x24: "Game",
+                    0x25: "Sound Clip",
+                    0x26: "Gospel",
+                    0x27: "Noise",
+                    0x28: "AlternRock",
+                    0x29: "Bass",
+                    0x2a: "Soul",
+                    0x2b: "Punk",
+                    0x2c: "Space",
+                    0x2d: "Meditative",
+                    0x2e: "Instrumental Pop",
+                    0x2f: "Instrumental Rock",
+                    0x30: "Ethnic",
+                    0x31: "Gothic",
+                    0x32: "Darkwave",
+                    0x33: "Techno-Industrial",
+                    0x34: "Electronic",
+                    0x35: "Pop-Folk",
+                    0x36: "Eurodance",
+                    0x37: "Dream",
+                    0x38: "Southern Rock",
+                    0x39: "Comedy",
+                    0x3a: "Cult",
+                    0x3b: "Gangsta",
+                    0x3c: "Top 40",
+                    0x3d: "Christian Rap",
+                    0x3e: "Pop/Funk",
+                    0x3f: "Jungle",
+                    0x40: "Native American",
+                    0x41: "Cabaret",
+                    0x42: "New Wave",
+                    0x43: "Psychadelic",
+                    0x44: "Rave",
+                    0x45: "Showtunes",
+                    0x46: "Trailer",
+                    0x47: "Lo-Fi",
+                    0x48: "Tribal",
+                    0x49: "Acid Punk",
+                    0x4a: "Acid Jazz",
+                    0x4b: "Polka",
+                    0x4c: "Retro",
+                    0x4d: "Musical",
+                    0x4e: "Rock & Roll",
+                    0x4f: "Hard Rock",
+                    0x50: "Folk",
+                    0x51: "Folk-Rock",
+                    0x52: "National Folk",
+                    0x53: "Swing",
+                    0x54: "Fast Fusion",
+                    0x55: "Bebob",
+                    0x56: "Latin",
+                    0x57: "Revival",
+                    0x58: "Celtic",
+                    0x59: "Bluegrass",
+                    0x5a: "Avantgarde",
+                    0x5b: "Gothic Rock",
+                    0x5c: "Progressive Rock",
+                    0x5d: "Psychedelic Rock",
+                    0x5e: "Symphonic Rock",
+                    0x5f: "Slow Rock",
+                    0x60: "Big Band",
+                    0x61: "Chorus",
+                    0x62: "Easy Listening",
+                    0x63: "Acoustic",
+                    0x64: "Humour",
+                    0x65: "Speech",
+                    0x66: "Chanson",
+                    0x67: "Opera",
+                    0x68: "Chamber Music",
+                    0x69: "Sonata",
+                    0x6a: "Symphony",
+                    0x6b: "Booty Bass",
+                    0x6c: "Primus",
+                    0x6d: "Porn Groove",
+                    0x6e: "Satire",
+                    0x6f: "Slow Jam",
+                    0x70: "Club",
+                    0x71: "Tango",
+                    0x72: "Samba",
+                    0x73: "Folklore",
+                    0x74: "Ballad",
+                    0x75: "Power Ballad",
+                    0x76: "Rhythmic Soul",
+                    0x77: "Freestyle",
+                    0x78: "Duet",
+                    0x79: "Punk Rock",
+                    0x7a: "Drum Solo",
+                    0x7b: "A capella",
+                    0x7c: "Euro-House",
+                    0x7d: "Dance Hall",
+                    0xff: "Unknown",
+                },
+                True,
+            )
+
+        return meta
