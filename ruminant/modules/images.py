@@ -612,8 +612,7 @@ class IRBModule(module.RuminantModule):
                     case _:
                         block["data"]["blob"] = self.buf.rh(self.buf.unit)
                         block["data"]["unknown"] = True
-            except Exception as e:
-                raise e
+            except Exception:
                 block["data"]["malformed"] = True
 
             meta["data"]["blocks"].append(block)
@@ -2485,7 +2484,6 @@ class GifModule(module.RuminantModule):
                     block["type"] = "end"
                     running = False
                 case _:
-                    break
                     raise ValueError(f"Unknown GIF block type {typ}")
 
             meta["blocks"].append(block)
