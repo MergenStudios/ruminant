@@ -125,6 +125,8 @@ class PdfModule(module.RuminantModule):
                             stuck = False
                         except ReparsePoint:
                             pass
+                        except KeyError:
+                            pass
 
             if len(self.queue):
                 for i in range(0, len(self.queue)):
