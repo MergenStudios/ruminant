@@ -514,9 +514,23 @@ class Buf(object):
 
         return v
 
+    def rubeb(self):
+        c = self.ru8()
+        v = c & 0x7f
+
+        while c & 0x80:
+            c = self.ru8()
+            v = (v << 7) | (c & 0x7f)
+
+        return v
+
     def puleb(self):
         with self.buf:
             return self.ruleb()
+
+    def pubeb(self):
+        with self.buf:
+            return self.rubeb()
 
     def rb(self, count):
         i = 0

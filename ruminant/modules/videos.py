@@ -49,7 +49,7 @@ class IsoModule(module.RuminantModule):
 
         bak = self.buf.backup()
 
-        while self.buf.unit > 8:
+        while self.buf.unit >= 8:
             atom["data"]["atoms"].append(self.read_atom())
 
         self.buf.restore(bak)
@@ -75,7 +75,9 @@ class IsoModule(module.RuminantModule):
         self.buf.pushunit()
         self.buf.setunit(length)
 
-        if typ in (
+        if typ == "":
+            pass
+        elif typ in (
             "moov",
             "trak",
             "mdia",
@@ -101,6 +103,7 @@ class IsoModule(module.RuminantModule):
             "jp2h",
             "asoc",
             "jumb",
+            "wave",
         ) or (typ[0] == "©" and self.buf.peek(8)[4:8] == b"data"):
             self.read_more(atom)
         elif typ in ("ftyp", "styp"):
@@ -382,7 +385,7 @@ class IsoModule(module.RuminantModule):
             atom["data"]["reserved"] = self.buf.ru16()
         elif typ == "esds":
             self.read_version(atom)
-            atom["data"]["or"] = self.buf.readunit().hex()
+            atom["data"]["descriptor"] = self.read_esds()
         elif typ == "data":
             atom["data"]["type"] = self.buf.ru32()
             self.buf.skip(4)
@@ -1161,6 +1164,26 @@ class IsoModule(module.RuminantModule):
             self.buf.skip(8)
             with self.buf.subunit():
                 atom["data"]["content"] = chew(self.buf)
+        elif typ == "d263":
+            atom["data"]["encoder"] = self.buf.rs(4)
+            atom["data"]["decoder-version"] = self.buf.ru8()
+            atom["data"]["level"] = self.buf.ru8()
+            atom["data"]["profile"] = self.buf.ru8()
+        elif typ == "chan":
+            atom["data"]["version"] = self.buf.ru8()
+            atom["data"]["flags"] = self.buf.ru24()
+            atom["data"]["layout-tag"] = self.buf.ru32()
+            atom["data"]["bitmap"] = self.buf.ru32()
+            atom["data"]["channel-descriptor-count"] = self.buf.ru32()
+
+            atom["data"]["channel-descriptors"] = []
+            for i in range(0, atom["data"]["channel-descriptor-count"]):
+                desc = {}
+                desc["label"] = self.buf.ru32()
+                desc["flags"] = self.buf.ru32()
+                desc["coordinates"] = [self.buf.ru32l() for j in range(0, 3)]
+
+                atom["data"]["channel-descriptors"].append(desc)
         elif typ[0] == "©" or typ in ("iods", "SDLN", "smrd"):
             if typ[:2] == "©T" and self.buf.pu16() == self.buf.unit - 4:
                 length = self.buf.ru16()
@@ -1173,7 +1196,7 @@ class IsoModule(module.RuminantModule):
         elif typ in ("hint", "cdsc", "font", "hind", "vdep", "vplx", "subt", "cdep"):
             atom["data"]["track-id"] = self.buf.ru32()
         # video sample boxes
-        elif typ in ("avc1", "hvc1", "vp09", "encv", "av01", "hev1", "vvc1"):
+        elif typ in ("avc1", "hvc1", "vp09", "encv", "av01", "hev1", "vvc1", "h263"):
             atom["data"]["reserved1"] = self.buf.rh(6)
             atom["data"]["data_reference_index"] = self.buf.ru16()
             atom["data"]["pre-defined1"] = self.buf.rh(2)
@@ -1210,31 +1233,34 @@ class IsoModule(module.RuminantModule):
             "Opus",
             "ipcm",
         ):
-            # see https://github.com/sannies/mp4parser for reference
-            atom["data"]["reserved1"] = self.buf.rh(6)
-            atom["data"]["data-reference-index"] = self.buf.ru16()
-            atom["data"]["sound-version"] = self.buf.ru16()
-            atom["data"]["reserved2"] = self.buf.rh(6)
-            atom["data"]["channel-count"] = self.buf.ru16()
-            atom["data"]["sample-size"] = self.buf.ru16()
-            atom["data"]["compression-id"] = self.buf.ru16()
-            atom["data"]["packet-size"] = self.buf.ru16()
+            if typ == "mp4a" and self.buf.unit == 4:
+                atom["data"]["content"] = self.buf.rh(self.buf.unit)
+            else:
+                # see https://github.com/sannies/mp4parser for reference
+                atom["data"]["reserved1"] = self.buf.rh(6)
+                atom["data"]["data-reference-index"] = self.buf.ru16()
+                atom["data"]["sound-version"] = self.buf.ru16()
+                atom["data"]["reserved2"] = self.buf.rh(6)
+                atom["data"]["channel-count"] = self.buf.ru16()
+                atom["data"]["sample-size"] = self.buf.ru16()
+                atom["data"]["compression-id"] = self.buf.ru16()
+                atom["data"]["packet-size"] = self.buf.ru16()
 
-            atom["data"]["sample-rate"] = self.buf.ru32()
-            if typ != "mlpa":
-                atom["data"]["sample-rate"] >>= 16
+                atom["data"]["sample-rate"] = self.buf.ru32()
+                if typ != "mlpa":
+                    atom["data"]["sample-rate"] >>= 16
 
-            if atom["data"]["sound-version"] >= 1:
-                atom["data"]["samples-per-packet"] = self.buf.ru32()
-                atom["data"]["bytes-per-packet"] = self.buf.ru32()
-                atom["data"]["bytes-per-frame"] = self.buf.ru32()
-                atom["data"]["bytes-per-sample"] = self.buf.ru32()
+                if atom["data"]["sound-version"] >= 1:
+                    atom["data"]["samples-per-packet"] = self.buf.ru32()
+                    atom["data"]["bytes-per-packet"] = self.buf.ru32()
+                    atom["data"]["bytes-per-frame"] = self.buf.ru32()
+                    atom["data"]["bytes-per-sample"] = self.buf.ru32()
 
-            if atom["data"]["sound-version"] >= 2:
-                atom["data"]["sound-v2-data"] = self.buf.rh(20)
+                if atom["data"]["sound-version"] >= 2:
+                    atom["data"]["sound-v2-data"] = self.buf.rh(20)
 
-            if typ != "owma":
-                self.read_more(atom)
+                if typ != "owma":
+                    self.read_more(atom)
         elif typ in ("lpcm", "beam"):
             # TODO
             pass
@@ -1402,6 +1428,151 @@ class IsoModule(module.RuminantModule):
         except Exception:
             # sei parsing can fail with cenc extensions
             pass
+
+    def read_esds(self):
+        tlv = {}
+        tlv["tag"] = utils.unraw(
+            self.buf.ru8(),
+            1,
+            {
+                0x03: "ES_Descriptor",
+                0x04: "DecoderConfigDescriptor",
+                0x05: "DecoderSpecificInfo",
+                0x06: "SLConfigDescriptor",
+            },
+            True,
+        )
+        tlv["length"] = self.buf.rubeb()
+        tlv["value"] = {}
+
+        self.buf.pasunit(tlv["length"])
+
+        match tlv["tag"]:
+            case "ES_Descriptor":
+                tlv["value"]["es-id"] = self.buf.ru16()
+                tlv["value"]["stream-dependence-flag"] = self.buf.rb(1)
+                tlv["value"]["url-flag"] = self.buf.rb(1)
+                tlv["value"]["ocr-stream-flag"] = self.buf.rb(1)
+                tlv["value"]["stream-priority"] = self.buf.rb(5)
+
+                if tlv["value"]["stream-dependence-flag"]:
+                    tlv["value"]["depends-on-es-id"] = self.buf.ru16()
+
+                if tlv["value"]["url-flag"]:
+                    tlv["value"]["url-length"] = self.buf.ru8()
+                    tlv["value"]["url"] = self.buf.rs(tlv["value"]["url-length"])
+
+                if tlv["value"]["ocr-stream-flag"]:
+                    tlv["value"]["ocr-es-id"] = self.buf.ru16()
+
+                tlv["value"]["children"] = []
+                while self.buf.unit > 0:
+                    tlv["value"]["children"].append(self.read_esds())
+            case "DecoderConfigDescriptor":
+                tlv["value"]["object-type-indictation"] = utils.unraw(
+                    self.buf.ru8(),
+                    1,
+                    {
+                        0x01: "Systems ISO/IEC 14496-1 a",
+                        0x02: "Systems ISO/IEC 14496-1 b",
+                        0x03: "Interaction Stream",
+                        0x04: "Systems ISO/IEC 14496-1 Extended BIFS Configuration c",
+                        0x05: "Systems ISO/IEC 14496-1 AFX d",
+                        0x06: "Font Data Stream",
+                        0x07: "Synthesized Texture Stream",
+                        0x08: "Streaming Text Stream",
+                        0x20: "Visual ISO/IEC 14496-2 e",
+                        0x21: "Visual ITU-T Recommendation H.264 | ISO/IEC 14496-10 f",
+                        0x22: "Parameter Sets for ITU-T Recommendation H.264 | ISO/IEC 14496-10 f",
+                        0x40: "Audio ISO/IEC 14496-3 g",
+                        0x60: "Visual ISO/IEC 13818-2 Simple Profile",
+                        0x61: "Visual ISO/IEC 13818-2 Main Profile",
+                        0x62: "Visual ISO/IEC 13818-2 SNR Profile",
+                        0x63: "Visual ISO/IEC 13818-2 Spatial Profile",
+                        0x64: "Visual ISO/IEC 13818-2 High Profile",
+                        0x65: "Visual ISO/IEC 13818-2 422 Profile",
+                        0x66: "Audio ISO/IEC 13818-7 Main Profile",
+                        0x67: "Audio ISO/IEC 13818-7 LowComplexity Profile",
+                        0x68: "Audio ISO/IEC 13818-7 Scaleable Sampling Rate Profile",
+                        0x69: "Audio ISO/IEC 13818-3",
+                        0x6a: "Visual ISO/IEC 11172-2",
+                        0x6b: "Audio ISO/IEC 11172-3",
+                        0x6c: "Visual ISO/IEC 10918-1",
+                        0x6e: "Visual ISO/IEC 15444-1",
+                    },
+                    True,
+                )
+                tlv["value"]["stream-type"] = utils.unraw(
+                    self.buf.rb(6),
+                    1,
+                    {
+                        0x01: "ObjectDescriptorStream",
+                        0x02: "ClockReferenceStream",
+                        0x03: "SceneDescriptionStream",
+                        0x04: "VisualStream",
+                        0x05: "AudioStream",
+                        0x06: "MPEG7Stream",
+                        0x07: "IPMPStream",
+                        0x08: "ObjectContentInfoStream",
+                        0x09: "MPEGJStream",
+                        0x0a: "Interaction Stream",
+                        0x0b: "IPMPToolStream",
+                    },
+                    True,
+                )
+                tlv["value"]["up-stream"] = self.buf.rb(1)
+                tlv["value"]["reserved"] = self.buf.rb(1)
+                tlv["value"]["buffer-size-db"] = self.buf.ru24()
+                tlv["value"]["max-bitrate"] = self.buf.ru32()
+                tlv["value"]["avg-bitrate"] = self.buf.ru32()
+
+                tlv["value"]["children"] = []
+                while self.buf.unit > 0:
+                    tlv["value"]["children"].append(self.read_esds())
+            case "DecoderSpecificInfo":
+                tlv["value"]["payload"] = self.buf.rh(self.buf.unit)
+            case "SLConfigDescriptor":
+                tlv["value"]["predefined"] = self.buf.ru8()
+
+                if tlv["value"]["predefined"] == 0:
+                    tlv["value"]["use-access-unit-start-flag"] = self.buf.rb(1)
+                    tlv["value"]["use-access-unit-end-flag"] = self.buf.rb(1)
+                    tlv["value"]["use-random-access-point-flag"] = self.buf.rb(1)
+                    tlv["value"]["has-random-access-units-only-flag"] = self.buf.rb(1)
+                    tlv["value"]["use-padding-flag"] = self.buf.rb(1)
+                    tlv["value"]["use-timestamps-flag"] = self.buf.rb(1)
+                    tlv["value"]["use-idle-flag"] = self.buf.rb(1)
+                    tlv["value"]["duration-flag"] = self.buf.rb(1)
+                    tlv["value"]["timestamp-resolution"] = self.buf.ru32()
+                    tlv["value"]["ocr-resolution"] = self.buf.ru32()
+                    tlv["value"]["timestamp-length"] = self.buf.ru8()
+                    tlv["value"]["ocr-length"] = self.buf.ru8()
+                    tlv["value"]["au-length"] = self.buf.ru8()
+                    tlv["value"]["instant-bitrate-length"] = self.buf.ru8()
+                    tlv["value"]["degradation-priority-length"] = self.buf.rb(4)
+                    tlv["value"]["au-sequence-number"] = self.buf.rb(5)
+                    tlv["value"]["packet-sequence-number-length"] = self.buf.rb(5)
+                    tlv["value"]["reserved"] = self.buf.rb(2)
+
+                    if tlv["value"]["duration-flag"]:
+                        tlv["value"]["time-scale"] = self.buf.ru32()
+                        tlv["value"]["access-unit-duration"] = self.buf.ru16()
+                        tlv["value"]["composition-unit-duration"] = self.buf.ru16()
+
+                    if not tlv["value"]["use-timestamps-flag"]:
+                        tlv["value"]["start-decoding-timestamp"] = self.buf.rb(
+                            tlv["value"]["timestamp-length"]
+                        )
+                        tlv["value"]["start-comosition-timestamp"] = self.buf.rb(
+                            tlv["value"]["timestamp-length"]
+                        )
+            case _:
+                tlv["unknown"] = True
+                tlv["value"]["payload"] = self.buf.rh(self.buf.unit)
+
+        self.buf.sapunit()
+
+        return tlv
 
 
 @module.register
