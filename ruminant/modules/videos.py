@@ -532,13 +532,103 @@ class IsoModule(module.RuminantModule):
             atom["data"]["arrays"] = []
             for i in range(0, atom["data"]["numOfArrays"]):
                 array = {}
-                array["array_completeness,reserved,NAL_unit_type"] = self.buf.ru8()
+                array["array-completeness"] = self.buf.rb(1)
+                array["reserved"] = self.buf.rb(1)
+                array["nal-unit-type"] = utils.unraw(
+                    self.buf.rb(6),
+                    1,
+                    {
+                        0x20: "VPS",
+                        0x21: "SPS",
+                        0x22: "PPS",
+                        0x27: "Prefix SEI",
+                        0x28: "Suffix SEI",
+                    },
+                    True,
+                )
                 array["numNalus"] = self.buf.ru16()
                 array["nalus"] = []
                 for j in range(0, array["numNalus"]):
                     entry = {}
                     entry["nalUnitLength"] = self.buf.ru16()
-                    entry["nalUnit"] = self.buf.rh(entry["nalUnitLength"])
+
+                    self.buf.pasunit(entry["nalUnitLength"])
+
+                    entry["nalUnit"] = {}
+                    entry["nalUnit"]["forbidden-zero-bit"] = self.buf.rb(1)
+                    entry["nalUnit"]["nal-unit-type"] = utils.unraw(
+                        self.buf.rb(6),
+                        1,
+                        {
+                            0x20: "VPS",
+                            0x21: "SPS",
+                            0x22: "PPS",
+                            0x27: "Prefix SEI",
+                            0x28: "Suffix SEI",
+                        },
+                        True,
+                    )
+                    entry["nalUnit"]["nuh-layer-id"] = self.buf.rb(6)
+                    entry["nalUnit"]["nuh-temporal-id-plus-1"] = self.buf.rb(3)
+
+                    match entry["nalUnit"]["nal-unit-type"]:
+                        case "Prefix SEI":
+                            vals = []
+                            for i in range(0, 2):
+                                val = 0
+                                while True:
+                                    c = self.buf.ru8()
+                                    val += c
+
+                                    if c != 0xff:
+                                        break
+
+                                vals.append(val)
+
+                            entry["nalUnit"]["payload-type"] = utils.unraw(
+                                vals[0],
+                                4,
+                                {
+                                    0x00: "buffering_period",
+                                    0x01: "pic_timing",
+                                    0x05: "user_data_unregistered",
+                                    0x89: "mastering_display_colour_volume",
+                                    0x90: "content_light_level_info",
+                                },
+                                True,
+                            )
+                            entry["nalUnit"]["payload-size"] = vals[1]
+
+                            self.buf.pasunit(entry["nalUnit"]["payload-size"])
+
+                            match entry["nalUnit"]["payload-type"]:
+                                case "user_data_unregistered":
+                                    if (
+                                        self.buf.ph(16)
+                                        == "2ca2de09b51747dbbb55a4fe7fc2fc4e"
+                                    ):
+                                        entry["nalUnit"]["libx265-uuid"] = (
+                                            self.buf.ruuid()
+                                        )
+                                        entry["nalUnit"]["libx265-string"] = (
+                                            self.buf.rs(self.buf.unit)
+                                        )
+                                    else:
+                                        entry["nalUnit"]["payload"] = self.buf.rh(
+                                            self.buf.unit
+                                        )
+                                case _:
+                                    entry["nalUnit"]["payload"] = self.buf.rh(
+                                        self.buf.unit
+                                    )
+                                    entry["unknown"] = True
+
+                            self.buf.sapunit()
+                        case _:
+                            entry["nalUnit"]["payload"] = self.buf.rh(self.buf.unit)
+                            entry["unknown"] = True
+
+                    self.buf.sapunit()
 
                     array["nalus"].append(entry)
 
