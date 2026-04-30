@@ -292,9 +292,9 @@ class IsoModule(module.RuminantModule):
                 atom["data"]["reserved3"] = self.buf.rb(6)
                 atom["data"]["chroma-format"] = self.buf.rb(2)
                 atom["data"]["reserved4"] = self.buf.rb(5)
-                atom["data"]["bit-depth-luma-minus-eight"] = self.buf.rb(2)
+                atom["data"]["bit-depth-luma-minus-eight"] = self.buf.rb(3)
                 atom["data"]["reserved5"] = self.buf.rb(5)
-                atom["data"]["bit-depth-chroma-minus-eight"] = self.buf.rb(2)
+                atom["data"]["bit-depth-chroma-minus-eight"] = self.buf.rb(3)
 
                 atom["data"]["picture-parameter-set-ext-count"] = self.buf.ru8()
                 atom["data"]["picture-parameter-set-exts"] = []
