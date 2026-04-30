@@ -266,23 +266,44 @@ class IsoModule(module.RuminantModule):
 
             atom["data"]["location"] = self.buf.readunit()[:-1].decode("utf-8")
         elif typ == "avcC":
-            atom["data"]["configurationVersion"] = self.buf.ru8()
-            atom["data"]["AVCProfileIndication"] = self.buf.ru8()
+            atom["data"]["configuration-version"] = self.buf.ru8()
+            atom["data"]["avc-profile-indication"] = self.buf.ru8()
             atom["data"]["profile-compatibility"] = self.buf.ru8()
-            atom["data"]["AVCLevelIndication"] = self.buf.ru8()
-            atom["data"]["lengthSizeMinusOne"] = self.buf.ru8()
+            atom["data"]["avc-level-indication"] = self.buf.ru8()
+            atom["data"]["reserved1"] = self.buf.rb(6)
+            atom["data"]["length-size-minus-one"] = self.buf.rb(2)
 
-            atom["data"]["numOfSequenceParameterSets"] = self.buf.ru8()
-            atom["data"]["sequenceParameterSets"] = []
-            for i in range(0, atom["data"]["numOfSequenceParameterSets"] & 0b00011111):
-                length = self.buf.ru16()
-                atom["data"]["sequenceParameterSets"].append(self.buf.rh(length))
+            atom["data"]["reserved2"] = self.buf.rb(3)
+            atom["data"]["sequence-parameter-set-count"] = self.buf.rb(5)
+            atom["data"]["sequence-parameter-sets"] = []
+            for i in range(0, atom["data"]["sequence-parameter-set-count"]):
+                self.buf.pasunit(self.buf.ru16())
+                atom["data"]["sequence-parameter-sets"].append(self.read_h264_nalu())
+                self.buf.sapunit()
 
-            atom["data"]["numOfPictureParameterSets"] = self.buf.ru8()
-            atom["data"]["pictureParameterSets"] = []
-            for i in range(0, atom["data"]["numOfPictureParameterSets"]):
-                length = self.buf.ru16()
-                atom["data"]["pictureParameterSets"].append(self.buf.rh(length))
+            atom["data"]["picture-parameter-set-count"] = self.buf.ru8()
+            atom["data"]["picture-parameter-sets"] = []
+            for i in range(0, atom["data"]["picture-parameter-set-count"]):
+                self.buf.pasunit(self.buf.ru16())
+                atom["data"]["picture-parameter-sets"].append(self.read_h264_nalu())
+                self.buf.sapunit()
+
+            if atom["data"]["avc-profile-indication"] not in (66, 77, 88):
+                atom["data"]["reserved3"] = self.buf.rb(6)
+                atom["data"]["chroma-format"] = self.buf.rb(2)
+                atom["data"]["reserved4"] = self.buf.rb(5)
+                atom["data"]["bit-depth-luma-minus-eight"] = self.buf.rb(2)
+                atom["data"]["reserved5"] = self.buf.rb(5)
+                atom["data"]["bit-depth-chroma-minus-eight"] = self.buf.rb(2)
+
+                atom["data"]["picture-parameter-set-ext-count"] = self.buf.ru8()
+                atom["data"]["picture-parameter-set-exts"] = []
+                for i in range(0, atom["data"]["picture-parameter-set-ext-count"]):
+                    self.buf.pasunit(self.buf.ru16())
+                    atom["data"]["picture-parameter-set-exts"].append(
+                        self.read_h264_nalu()
+                    )
+                    self.buf.sapunit()
         elif typ == "colr":
             if self.mode == "jp2":
                 atom["data"]["method"] = self.buf.ru8()
@@ -1664,6 +1685,57 @@ class IsoModule(module.RuminantModule):
         self.buf.sapunit()
 
         return tlv
+
+    def read_h264_nalu(self):
+        nal = {}
+        nal["forbidden-zero-bit"] = self.buf.rb(1)
+        nal["ref-idc"] = self.buf.rb(2)
+        # ISO/IEC 14496-10:2022 page 81
+        nal["unit-type"] = utils.unraw(
+            self.buf.rb(5),
+            1,
+            {0x07: "Sequence parameter set", 0x08: "Picture parameter set"},
+            True,
+        )
+
+        match nal["unit-type"]:
+            case "Sequence parameter set":
+                # ISO/IEC 14496-10:2022 page 59
+                nal["profile-idc"] = self.buf.ru8()
+                nal["constraint-set-flags"] = [self.buf.rb(1) for i in range(0, 6)]
+                nal["reserved"] = self.buf.rb(2)
+                nal["level-idc"] = self.buf.ru8()
+                nal["seq-parameter-set-id"] = self.buf.rue()
+
+                if nal["profile-idc"] in (
+                    44,
+                    83,
+                    86,
+                    100,
+                    110,
+                    118,
+                    122,
+                    128,
+                    134,
+                    135,
+                    138,
+                    139,
+                    244,
+                ):
+                    # TODO: scaling lists look annoying and like a problem for later
+                    self.buf.align()
+                    nal["rest"] = self.buf.rh(self.buf.unit)
+                    nal["unknown"] = True
+                    return nal
+
+                # TODO: implement rest
+                self.buf.align()
+                nal["rest"] = self.buf.rh(self.buf.unit)
+            case _:
+                nal["payload"] = self.buf.rh(self.buf.unit)
+                nal["unknown"] = True
+
+        return nal
 
 
 @module.register
