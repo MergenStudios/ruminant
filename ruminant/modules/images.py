@@ -2775,18 +2775,18 @@ class JpegXlModule(module.RuminantModule):
 
         meta["header"] = {}
         meta["header"]["size"] = {}
-        meta["header"]["size"]["div8"] = bool(self.buf.rb(1))
+        meta["header"]["size"]["div8"] = bool(self.buf.rbl(1))
         if meta["header"]["size"]["div8"]:
-            meta["header"]["size"]["h_div8"] = self.buf.rb(5) + 1
-            meta["header"]["size"]["height"] = meta["header"]["size"]["h_div8"] * 8
+            meta["header"]["size"]["h-div8"] = self.buf.rbl(5) + 1
+            meta["header"]["size"]["height"] = meta["header"]["size"]["h-div8"] * 8
         else:
-            meta["header"]["size"]["h_div8"] = 0
+            meta["header"]["size"]["h-div8"] = 0
             meta["header"]["size"]["height"] = (
-                self.buf.rb([9, 13, 18, 30][self.buf.rb(2)]) + 1
+                self.buf.rbl([9, 13, 18, 30][self.buf.rbl(2)]) + 1
             )
-        meta["header"]["size"]["ratio"] = self.buf.rb(3)
+        meta["header"]["size"]["ratio"] = self.buf.rbl(3)
 
-        meta["header"]["size"]["w_div8"] = 0
+        meta["header"]["size"]["w-div8"] = 0
         meta["header"]["size"]["width"] = (
             meta["header"]["size"]["height"]
             * [0, 1, 6, 4, 3, 16, 5, 2][meta["header"]["size"]["ratio"]]
@@ -2795,12 +2795,27 @@ class JpegXlModule(module.RuminantModule):
 
         if not meta["header"]["size"]["ratio"]:
             if meta["header"]["size"]["div8"]:
-                meta["header"]["size"]["w_div8"] = self.buf.rb(5) + 1
-                meta["header"]["size"]["width"] = meta["header"]["size"]["w_div8"] * 8
+                meta["header"]["size"]["w-div8"] = self.buf.rbl(5) + 1
+                meta["header"]["size"]["width"] = meta["header"]["size"]["w-div8"] * 8
             else:
                 meta["header"]["size"]["width"] = (
-                    self.buf.rb([9, 13, 18, 30][self.buf.rb(2)]) + 1
+                    self.buf.rbl([9, 13, 18, 30][self.buf.rbl(2)]) + 1
                 )
+
+        meta["metadata"] = {}
+        meta["metadata"]["all-default"] = bool(self.buf.rbl(1))
+
+        if not meta["metadata"]["all-default"]:
+            pass
+        else:
+            meta["metadata"]["extra-fields"] = False
+            meta["metadata"]["orientation"] = 1
+            meta["metadata"]["have-intr-size"] = False
+            meta["metadata"]["have-preview"] = False
+            meta["metadata"]["have-animation"] = False
+            meta["metadata"]["modular-16bit-buffers"] = True
+            meta["metadata"]["num-extra"] = 0
+            meta["metadata"]["xyb-encoded"] = True
 
         self.buf.align()
 

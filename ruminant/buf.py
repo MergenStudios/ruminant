@@ -553,6 +553,28 @@ class Buf(object):
 
         return i
 
+    def rbl(self, count):
+        i = 0
+        shift = 0
+
+        c = self.pu8()
+        while count:
+            if self._bits >= 8:
+                self._bits = 0
+                self.skip(1)
+                c = self.pu8()
+
+            i |= ((c >> self._bits) & 0x01) << shift
+            shift += 1
+            self._bits += 1
+            count -= 1
+
+        if self._bits >= 8:
+            self._bits = 0
+            self.skip(1)
+
+        return i
+
     def rsb(self, count):
         v = self.rb(count)
 
@@ -564,6 +586,10 @@ class Buf(object):
     def pb(self, count):
         with self:
             return self.rb(count)
+
+    def pbl(self, count):
+        with self:
+            return self.rbl(count)
 
     def psb(self, count):
         with self:
