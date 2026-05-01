@@ -1948,7 +1948,10 @@ class PeModule(module.RuminantModule):
                 self.buf.pushunit()
                 self.buf.setunit(rsrc["length"] - (self.buf.tell() - pos))
 
-                rsrc["value"]["string"] = self.buf.rwzs()
+                if self.buf.unit >= 2:
+                    rsrc["value"]["string"] = self.buf.rwzs()
+                else:
+                    rsrc["value"]["string"] = ""
 
                 self.buf.popunit()
             case _:
