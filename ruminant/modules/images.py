@@ -2767,6 +2767,16 @@ class JpegXlModule(module.RuminantModule):
     def identify(buf, ctx):
         return buf.peek(2) == b"\xff\x0a"
 
+    def ru32(self, d0, d1, d2, d3, o0=0, o1=0, o2=0, o3=0):
+        index = self.buf.rbl(2)
+        d = (d0, d1, d2, d3)[index]
+        o = (o0, o1, o2, o3)[index]
+
+        if d <= 0:
+            return o - d
+        else:
+            return self.buf.rbl(d) + o
+
     def chew(self):
         meta = {}
         meta["type"] = "jpeg-xl"
@@ -2781,9 +2791,7 @@ class JpegXlModule(module.RuminantModule):
             meta["header"]["size"]["height"] = meta["header"]["size"]["h-div8"] * 8
         else:
             meta["header"]["size"]["h-div8"] = 0
-            meta["header"]["size"]["height"] = (
-                self.buf.rbl([9, 13, 18, 30][self.buf.rbl(2)]) + 1
-            )
+            meta["header"]["size"]["height"] = self.ru32(9, 13, 18, 30, 1, 1, 1, 1)
         meta["header"]["size"]["ratio"] = self.buf.rbl(3)
 
         meta["header"]["size"]["w-div8"] = 0
@@ -2798,15 +2806,19 @@ class JpegXlModule(module.RuminantModule):
                 meta["header"]["size"]["w-div8"] = self.buf.rbl(5) + 1
                 meta["header"]["size"]["width"] = meta["header"]["size"]["w-div8"] * 8
             else:
-                meta["header"]["size"]["width"] = (
-                    self.buf.rbl([9, 13, 18, 30][self.buf.rbl(2)]) + 1
-                )
+                meta["header"]["size"]["width"] = self.ru32(9, 13, 18, 30, 1, 1, 1, 1)
 
         meta["metadata"] = {}
         meta["metadata"]["all-default"] = bool(self.buf.rbl(1))
 
         if not meta["metadata"]["all-default"]:
-            pass
+            meta["metadata"]["extra-fields"] = bool(self.buf.rbl(1))
+
+            if meta["metadata"]["extra-fields"]:
+                meta["metadata"]["orientation"] = self.buf.rbl(3) + 1
+                meta["metadata"]["have-intr-size"] = bool(self.buf.rbl(1))
+            else:
+                meta["metadata"]["orientation"] = 1
         else:
             meta["metadata"]["extra-fields"] = False
             meta["metadata"]["orientation"] = 1
