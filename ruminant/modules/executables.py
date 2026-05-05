@@ -3379,7 +3379,7 @@ class DexModule(module.RuminantModule):
         self.buf.pasunit(meta["header"]["string-ids"]["size"])
 
         meta["strings"] = []
-        while self.buf.unit > 0:
+        while self.buf.unit >= 4:
             offset = self.buf.ru32l()
             with self.buf:
                 self.buf.resetunit()
