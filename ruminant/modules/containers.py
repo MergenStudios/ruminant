@@ -1901,7 +1901,10 @@ class PcapNgModule(module.RuminantModule):
                             while self.buf.unit > 0:
                                 opt = {}
                                 opt["code"] = utils.unraw(
-                                    self.buf.ru16(), 2, {0x000a: "COOKIE"}, True
+                                    self.buf.ru16(),
+                                    2,
+                                    {0x000a: "COOKIE", 0x000f: "Extended DNS Error"},
+                                    True,
                                 )
                                 opt["length"] = self.buf.ru16()
                                 opt["data"] = {}
@@ -1911,6 +1914,45 @@ class PcapNgModule(module.RuminantModule):
                                 match opt["code"]:
                                     case "COOKIE":
                                         opt["data"]["cookie"] = self.buf.rh(
+                                            self.buf.unit
+                                        )
+                                    case "Extended DNS Error":
+                                        opt["data"]["info-code"] = utils.unraw(
+                                            self.buf.ru16(),
+                                            2,
+                                            {
+                                                0x0000: "Other Error",
+                                                0x0001: "Unsupported DNSKEY Algorithm",
+                                                0x0002: "Unsupported DS Digest Type",
+                                                0x0003: "Stale Answer",
+                                                0x0004: "Forged Answer",
+                                                0x0005: "Indeterminate",
+                                                0x0006: "DNSSEC Bogus",
+                                                0x0007: "Signature Expired",
+                                                0x0008: "Signature Not Yet Valid",
+                                                0x0009: "DNSKEY Missing",
+                                                0x000a: "RRSIGs Missing",
+                                                0x000b: "No Zone Key Bit Set",
+                                                0x000c: "NSEC Missing",
+                                                0x000d: "Cached Error",
+                                                0x000e: "Not Ready",
+                                                0x000f: "Blocked",
+                                                0x0010: "Censored",
+                                                0x0011: "Filtered",
+                                                0x0012: "Prohibited",
+                                                0x0013: "Stale NXDOMAIN Answer",
+                                                0x0014: "Not Authoritative",
+                                                0x0015: "Not Supported",
+                                                0x0016: "No Reachable Authority",
+                                                0x0017: "Network Error",
+                                                0x0018: "Invalid Data",
+                                                0x0019: "Signature Expired Before Valid",
+                                                0x001a: "Too Early",
+                                                0x001b: "Unsupported NSEC3 Iterations",
+                                            },
+                                            True,
+                                        )
+                                        opt["data"]["extra-text"] = self.buf.rs(
                                             self.buf.unit
                                         )
                                     case _:
@@ -2237,6 +2279,87 @@ class PcapNgModule(module.RuminantModule):
                             record["rdata"]["target"] = dns_read_name(base, length)
 
                             self.buf.sapunit()
+                        case "DS":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["key-tag"] = self.buf.ru16()
+                            record["rdata"]["algorithm"] = utils.unraw(
+                                self.buf.ru8(), 1, constants.DNSSEC_ALGORITHMS, True
+                            )
+                            record["rdata"]["digest-type"] = utils.unraw(
+                                self.buf.ru8(), 1, constants.DNSSEC_DIGESTS, True
+                            )
+                            record["rdata"]["digest"] = self.buf.rh(self.buf.unit)
+
+                            self.buf.sapunit()
+                        case "NSEC3":
+                            record["class"] = utils.unraw(
+                                self.buf.ru16(),
+                                2,
+                                {0x0001: "Internet", 0x00fe: "NONE", 0x00ff: "ANY"},
+                                True,
+                            )
+                            record["ttl"] = self.buf.ru32()
+                            record["rdata-length"] = self.buf.ru16()
+
+                            self.buf.pasunit(record["rdata-length"])
+
+                            record["rdata"] = {}
+                            record["rdata"]["hash-algorithm"] = utils.unraw(
+                                self.buf.ru8(), 1, constants.DNSSEC_DIGESTS, True
+                            )
+                            record["rdata"]["flags"] = utils.unpack_flags(
+                                self.buf.ru8(), ((0, "opt-out"),)
+                            )
+                            record["rdata"]["iterations"] = self.buf.ru16()
+                            record["rdata"]["salt-length"] = self.buf.ru8()
+                            record["rdata"]["salt"] = self.buf.rh(
+                                record["rdata"]["salt-length"]
+                            )
+                            record["rdata"]["hash-length"] = self.buf.ru8()
+                            record["rdata"]["next-hashed-owner-name"] = self.buf.rh(
+                                record["rdata"]["hash-length"]
+                            )
+
+                            record["rdata"]["type-bitmaps"] = []
+                            while self.buf.unit > 0:
+                                bitmap = {}
+                                bitmap["window"] = self.buf.ru8()
+                                bitmap["bitmap-length"] = self.buf.ru8()
+                                bitmap["bitmap"] = self.buf.rh(bitmap["bitmap-length"])
+
+                                record["rdata"]["type-bitmaps"].append(bitmap)
+
+                            record["rdata"]["types"] = []
+                            for entry in record["rdata"]["type-bitmaps"]:
+                                bits = int(
+                                    entry["bitmap"]
+                                    + "00" * (32 - entry["bitmap-length"]),
+                                    16,
+                                )
+
+                                for offset in range(0, 256):
+                                    if bits & (1 << (255 - offset)):
+                                        record["rdata"]["types"].append(
+                                            utils.unraw(
+                                                (entry["window"] << 8) | offset,
+                                                2,
+                                                constants.DNS_RECORD_TYPES,
+                                                True,
+                                            )
+                                        )
+
+                            self.buf.sapunit()
                         case _:
                             record["header"] = self.buf.rh(6)
                             record["rdata-length"] = self.buf.ru16()
@@ -2465,15 +2588,19 @@ class PcapNgModule(module.RuminantModule):
 
         self.buf.pasunit(packet["data-offset"] * 4 - 13)
 
-        packet["flags"] = {}
-        packet["flags"]["cwr"] = bool(self.buf.rb(1))
-        packet["flags"]["ece"] = bool(self.buf.rb(1))
-        packet["flags"]["urg"] = bool(self.buf.rb(1))
-        packet["flags"]["ack"] = bool(self.buf.rb(1))
-        packet["flags"]["psh"] = bool(self.buf.rb(1))
-        packet["flags"]["rst"] = bool(self.buf.rb(1))
-        packet["flags"]["syn"] = bool(self.buf.rb(1))
-        packet["flags"]["fin"] = bool(self.buf.rb(1))
+        packet["flags"] = utils.unpack_flags(
+            self.buf.rb(8),
+            (
+                (0, "fin"),
+                (1, "syn"),
+                (2, "rst"),
+                (3, "psh"),
+                (4, "ack"),
+                (5, "urg"),
+                (6, "ece"),
+                (7, "cwr"),
+            ),
+        )
 
         packet["window"] = self.buf.ru16()
         packet["checksum"] = self.buf.ru16()

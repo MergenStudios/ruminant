@@ -8192,6 +8192,16 @@ DNSSEC_ALGORITHMS = {
     0x17: "ECC-GOST12",
 }
 
+DNSSEC_DIGESTS = {
+    0x00: "Reserved",
+    0x01: "SHA-1",
+    0x02: "SHA-256",
+    0x03: "GOST R 34.11-94",
+    0x04: "SHA-384",
+    0x05: "GOST R 34.11-2012",
+    0x06: "SM3",
+}
+
 GIMP_IMAGE_TYPES = {
     0x00000000: "RGB color without alpha",
     0x00000001: "RGB color with alpha",
