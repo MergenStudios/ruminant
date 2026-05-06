@@ -2098,14 +2098,24 @@ class PeModule(module.RuminantModule):
         meta["msdos-header"]["oem-info"] = self.buf.ru16l()
         meta["msdos-header"]["reserved1"] = [self.buf.ru16l() for i in range(0, 10)]
         meta["msdos-header"]["pe-header-offset"] = self.buf.ru32l()
-        meta["msdos-header"]["stub"] = utils.unraw(
-            self.buf
-            .read(meta["msdos-header"]["pe-header-offset"] - self.buf.tell())[:64]
-            .rstrip(b"\x00")
-            .hex(),
-            0,
-            constants.PE_MSDOS_STUBS,
-        )
+
+        stub = self.buf.read(meta["msdos-header"]["pe-header-offset"] - self.buf.tell())
+
+        if stub[:4] == b"VLV\x00":
+            meta["msdos-header"]["stub"] = {
+                "name": "Valve",
+                "version": int.from_bytes(stub[4:8], "little"),
+                "full": stub.hex(),
+            }
+        else:
+            meta["msdos-header"]["stub"] = {
+                "name": utils.unraw(
+                    stub[:64].rstrip(b"\x00").hex(),
+                    0,
+                    constants.PE_MSDOS_STUBS,
+                ),
+                "full": stub.hex(),
+            }
 
         self.buf.seek(meta["msdos-header"]["pe-header-offset"])
         if self.buf.read(4) != b"PE\x00\x00":
