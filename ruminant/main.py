@@ -47,8 +47,15 @@ slim = False
 def process(file, walk):
     if not walk:
         # shortcut if walk mode isn't needed
+        global use_mmap
         if use_mmap:
-            with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+            try:
+                mm = mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ)
+            except Exception:
+                use_mmap = False
+                return process(file, walk)
+
+            with mm:
                 if slim:
                     return json.dumps(
                         modules.chew(mm), separators=(",", ":"), ensure_ascii=False

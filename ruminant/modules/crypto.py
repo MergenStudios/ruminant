@@ -144,6 +144,27 @@ class KdbxModule(module.RuminantModule):
     def identify(buf, ctx):
         return buf.peek(8) == b"\x03\xd9\xa2\x9ag\xfbK\xb5"
 
+    def walk_document(self, document, f):
+        if "text" in document and document.get("attributes", {}).get(
+            "Protected", False
+        ):
+            document["text"] = {
+                "raw": document["text"],
+                "decrypted": utils.decode(f(base64.b64decode(document["text"]))),
+            }
+
+            if document["text"]["decrypted"].startswith("-----BEGIN "):
+                parsed = chew(document["text"]["decrypted"].encode("utf-8"))
+                if parsed["type"] not in ("unknown", "error", "text"):
+                    document["text"]["parsed"] = parsed
+        elif document["tag"] == "Value" and "text" in document:
+            parsed = chew(document["text"].encode("utf-8"))
+            if parsed["type"] not in ("unknown", "error", "text"):
+                document["text"] = {"raw": document["text"], "parsed": parsed}
+
+        for child in document.get("children", ()):
+            self.walk_document(child, f)
+
     def chew(self):
         meta = {}
         meta["type"] = "kdbx"
@@ -387,6 +408,8 @@ class KdbxModule(module.RuminantModule):
             buf = Buf(content)
             meta["content"] = []
 
+            inner_encryption_algorithm = None
+            inner_key = b""
             should_break = False
             while buf.available() > 0 and not should_break:
                 entry = {}
@@ -416,8 +439,13 @@ class KdbxModule(module.RuminantModule):
                             {0x00000002: "Salsa20", 0x00000003: "ChaCha20"},
                             True,
                         )
+
+                        inner_encryption_algorithm = {"ChaCha20": "chacha20"}.get(
+                            entry["payload"]["encryption-algorithm"]
+                        )
                     case "Inner encryption key":
-                        entry["payload"]["key"] = buf.rh(buf.unit)
+                        inner_key = buf.read(buf.unit)
+                        entry["payload"]["key"] = inner_key.hex()
                     case "Binary content":
                         entry["payload"]["flags"] = utils.unpack_flags(
                             buf.ru8(), ((0, "binary"),)
@@ -433,7 +461,50 @@ class KdbxModule(module.RuminantModule):
 
                 buf.sapunit()
                 meta["content"].append(entry)
-            meta["document"] = utils.read_xml(buf)
+
+            with buf.sub(buf.available()):
+                meta["document"] = {"raw": chew(buf, blob_mode=True)}
+
+            def f(x):
+                return x
+
+            # flake8 is stupid
+            f(b"")
+
+            match inner_encryption_algorithm:
+                case "chacha20":
+                    inner_key = hashlib.sha512(inner_key).digest()
+                    index = 0
+
+                    del f
+
+                    def f(x):
+                        nonlocal index
+
+                        keystream = b""
+                        for i in range(index // 64, (index + len(x) + 63) // 64):
+                            keystream += crypto.chacha_block(
+                                b"expand 32-byte k"
+                                + inner_key[:32]
+                                + i.to_bytes(4, "little")
+                                + inner_key[32:44]
+                            )
+
+                        payload = bytes([
+                            c ^ k
+                            for c, k in zip(
+                                x, keystream[index % 64 : (index % 64) + len(x)]
+                            )
+                        ])
+                        index += len(x)
+                        return payload
+
+                    # flake8 is stupid
+                    f(b"")
+
+            document = utils.read_xml(buf)
+            self.walk_document(document, f)
+            meta["document"]["parsed"] = document
         else:
             meta["block-count"] = 0
             meta["blocks"] = []
