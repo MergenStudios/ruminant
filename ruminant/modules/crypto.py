@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import hmac
+import gzip
 
 
 @module.register
@@ -290,6 +291,7 @@ class KdbxModule(module.RuminantModule):
         params = {}
         master_seed = b""
         encryption_algorithm = None
+        compression_algorithm = None
         iv = b""
         for field in meta["fields"]:
             if field["type"] == "KDF parameters" and field["dict"]["version"] == "1.0":
@@ -313,6 +315,8 @@ class KdbxModule(module.RuminantModule):
                 }.get(field["algorithm"]["name"])
             elif field["type"] == "Encryption IV/nonce":
                 iv = bytes.fromhex(field["iv"])
+            elif field["type"] == "Compression algorithm":
+                compression_algorithm = {"GZip": "gzip"}.get(field["algorithm"]["name"])
 
         T = None
 
@@ -376,7 +380,60 @@ class KdbxModule(module.RuminantModule):
                 case "chacha20":
                     content = crypto.chacha20(content, decyption_key, iv)
 
-            meta["content"] = chew(content)
+            match compression_algorithm:
+                case "gzip":
+                    content = gzip.decompress(content)
+
+            buf = Buf(content)
+            meta["content"] = []
+
+            should_break = False
+            while buf.available() > 0 and not should_break:
+                entry = {}
+                entry["type"] = utils.unraw(
+                    buf.ru8(),
+                    1,
+                    {
+                        0x00: "End of header",
+                        0x01: "Inner encryption algorithm",
+                        0x02: "Inner encryption key",
+                        0x03: "Binary content",
+                    },
+                    True,
+                )
+                entry["length"] = buf.ru32l()
+
+                buf.pasunit(entry["length"])
+
+                entry["payload"] = {}
+                match entry["type"]:
+                    case "End of header":
+                        should_break = True
+                    case "Inner encryption algorithm":
+                        entry["payload"]["encryption-algorithm"] = utils.unraw(
+                            buf.ru32l(),
+                            4,
+                            {0x00000002: "Salsa20", 0x00000003: "ChaCha20"},
+                            True,
+                        )
+                    case "Inner encryption key":
+                        entry["payload"]["key"] = buf.rh(buf.unit)
+                    case "Binary content":
+                        entry["payload"]["flags"] = utils.unpack_flags(
+                            buf.ru8(), ((0, "binary"),)
+                        )
+
+                        with buf.subunit():
+                            entry["payload"]["content"] = chew(buf)
+                    case _:
+                        with buf.subunit():
+                            entry["payload"] = chew(buf)
+
+                        entry["unknown"] = True
+
+                buf.sapunit()
+                meta["content"].append(entry)
+            meta["document"] = utils.read_xml(buf)
         else:
             meta["block-count"] = 0
             meta["blocks"] = []
