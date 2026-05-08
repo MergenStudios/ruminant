@@ -271,7 +271,8 @@ class KdbxModule(module.RuminantModule):
         with self.buf:
             length = self.buf.tell() - 32
             self.buf.seek(0)
-            sha256_hash = hashlib.sha256(self.buf.read(length)).hexdigest()
+            header_data = self.buf.read(length)
+            sha256_hash = hashlib.sha256(header_data).hexdigest()
 
             meta["sha256"]["correct"] = meta["sha256"]["value"] == sha256_hash
             if not meta["sha256"]["correct"]:
@@ -279,11 +280,114 @@ class KdbxModule(module.RuminantModule):
 
         meta["hmac-sha256"] = self.buf.rh(32)
 
-        meta["block-count"] = 0
-        while self.buf.available() > 0:
-            meta["block-count"] += 1
-            self.buf.skip(32)
-            self.buf.skip(self.buf.ru32l())
+        meta["key"] = {
+            "name": meta["hmac-sha256"],
+            "found": secrets.get(meta["hmac-sha256"]) is not None,
+            "can-decrypt": False,
+        }
+
+        mode = None
+        params = {}
+        master_seed = b""
+        encryption_algorithm = None
+        iv = b""
+        for field in meta["fields"]:
+            if field["type"] == "KDF parameters" and field["dict"]["version"] == "1.0":
+                for entry in field["dict"]["entries"]:
+                    if entry["type"] == "end":
+                        break
+
+                    match entry["name"]:
+                        case "$UUID":
+                            mode = {"Argon2d": "2d", "Argon2id": "2id"}.get(
+                                entry["data"]["name"]
+                            )
+                        case "I" | "M" | "P" | "S" | "V":
+                            params[entry["name"]] = entry["data"]
+            elif field["type"] == "Master salt/seed":
+                master_seed = bytes.fromhex(field["salt"])
+            elif field["type"] == "Encryption algorithm":
+                encryption_algorithm = {
+                    "AES-256 (NIST FIPS 197, CBC mode, PKCS #7 padding)": "aes",
+                    "ChaCha20 (RFC 8439)": "chacha20",
+                }.get(field["algorithm"]["name"])
+            elif field["type"] == "Encryption IV/nonce":
+                iv = bytes.fromhex(field["iv"])
+
+        T = None
+
+        if meta["key"]["found"] and crypto.has_argon2 and mode in ("2d", "2id"):
+            meta["key"]["can-decrypt"] = True
+            R = hashlib.sha256(
+                hashlib.sha256(secrets.get(meta["hmac-sha256"]).encode("utf8")).digest()
+            ).digest()
+            T = crypto.argon2(
+                R,
+                bytes.fromhex(params["S"]),
+                params["I"],
+                params["M"] // 1024,
+                params["P"],
+                32,
+                mode[1:],
+                params["V"],
+            )
+
+        is_correct = False
+        if T is not None:
+            decyption_key = hashlib.sha256(master_seed + T).digest()
+            header_hmac_key = hashlib.sha512(
+                b"\xff" * 8 + hashlib.sha512(master_seed + T + b"\x01").digest()
+            ).digest()
+            header_hmac = hmac.digest(header_hmac_key, header_data, "sha256")
+            is_correct = header_hmac.hex() == meta["hmac-sha256"]
+
+            meta["key"]["correct"] = is_correct
+
+        if T is not None and is_correct:
+            content = b""
+
+            meta["block-count"] = 0
+            meta["blocks"] = []
+            while self.buf.available() > 0:
+                block = {}
+                block["hmac"] = self.buf.rh(32)
+                block["length"] = self.buf.ru32l()
+                content += self.buf.read(block["length"])
+
+                block_hmac = hmac.digest(
+                    hashlib.sha512(
+                        meta["block-count"].to_bytes(8, "little")
+                        + hashlib.sha512(master_seed + T + b"\x01").digest()
+                    ).digest(),
+                    meta["block-count"].to_bytes(8, "little")
+                    + block["length"].to_bytes(4, "little")
+                    + content,
+                    "sha256",
+                )
+
+                block["correct"] = block_hmac.hex() == block["hmac"]
+
+                meta["block-count"] += 1
+                meta["blocks"].append(block)
+
+            match encryption_algorithm:
+                case "aes":
+                    content = crypto.aes_cbc_pkcs7(decyption_key, iv, content)
+                case "chacha20":
+                    content = crypto.chacha20(content, decyption_key, iv)
+
+            meta["content"] = chew(content)
+        else:
+            meta["block-count"] = 0
+            meta["blocks"] = []
+            while self.buf.available() > 0:
+                block = {}
+                block["hmac"] = self.buf.rh(32)
+                block["length"] = self.buf.ru32l()
+                self.buf.skip(block["length"])
+
+                meta["block-count"] += 1
+                meta["blocks"].append(block)
 
         return meta
 

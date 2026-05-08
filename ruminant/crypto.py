@@ -635,3 +635,61 @@ def curve25519(base, scalar):
     secret = int.from_bytes(scalar, "little") & ~7 & ~(128 << 8 * 31) | (64 << 8 * 31)
 
     return _curve25519(base, secret).to_bytes(32, "little")
+
+
+has_argon2 = True
+try:
+    import argon2 as _argon2
+except ImportError:
+    has_argon2 = False
+
+
+def argon2(secret, salt, iterations, memory, parallelism, hash_len, type, version=0x13):
+    if not has_argon2:
+        raise Exception()
+
+    return _argon2.low_level.hash_secret_raw(
+        secret,
+        salt,
+        iterations,
+        memory,
+        parallelism,
+        hash_len,
+        {
+            "i": _argon2.low_level.Type.I,
+            "d": _argon2.low_level.Type.D,
+            "id": _argon2.low_level.Type.ID,
+        }.get(type),
+        version,
+    )
+
+
+def aes_cbc_pkcs7(key, iv, input_text, decrypt=True):
+    assert len(iv) == 16, "invalid IV length"
+
+    f = AES(key).decrypt if decrypt else AES(key).encrypt
+
+    output_text = b""
+    input_text = iv + input_text
+
+    if decrypt:
+        for i in range(16, len(input_text), 16):
+            output_text += bytes([
+                x ^ y for x, y in zip(input_text[i - 16 : i], f(input_text[i : i + 16]))
+            ])
+    else:
+        for i in range(16, len(input_text), 16):
+            output_text += f(
+                bytes([
+                    x ^ y
+                    for x, y in zip(input_text[i - 16 : i], input_text[i : i + 16])
+                ])
+            )
+
+    padding = output_text[-1]
+    assert padding > 0 and padding <= 16, "invalid padding"
+
+    for i in range(0, padding):
+        assert output_text[-1 - i] == padding
+
+    return output_text[:-padding]
