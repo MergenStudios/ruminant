@@ -3754,3 +3754,94 @@ class PcapNgModule(module.RuminantModule):
             meta["sections"].append(section)
 
         return meta
+
+
+@module.register
+class NcsdModule(module.RuminantModule):
+    dev = True
+    desc = "NCSD Nintendo 3DS Game Card image files."
+
+    def identify(buf, ctx):
+        if buf.available() < 512:
+            return False
+
+        return buf.peek(256 + 4)[256:] == b"NCSD"
+
+    def chew(self):
+        # https://www.3dbrew.org/wiki/NCSD
+        meta = {}
+        meta["type"] = "ncsd"
+
+        meta["header"] = {}
+        meta["header"]["rsa-signature"] = self.buf.rh(256)
+        self.buf.skip(4)
+        meta["header"]["size"] = self.buf.ru32l()
+
+        self.buf.pasunit(meta["header"]["size"] * 0x200 - 256 - 8)
+
+        meta["header"]["media-id"] = self.buf.ru64l()
+        meta["header"]["partition-fs-type"] = utils.unraw(
+            self.buf.ru64l(),
+            8,
+            {
+                0x0000000000000000: "None",
+                0x0000000000000001: "Normal",
+                0x0000000000000003: "FIRM",
+                0x0000000000000004: "AGB_FIRM save",
+            },
+            True,
+        )
+        meta["header"]["partition-crypt-type"] = list(self.buf.read(8))
+
+        meta["header"]["partitions"] = []
+        for i in range(0, 8):
+            part = {}
+            part["offset"] = self.buf.ru32l() * 0x200
+            part["length"] = self.buf.ru32l() * 0x200
+
+            with self.buf:
+                self.buf.seek(part["offset"])
+
+                with self.buf.sub(part["length"]):
+                    part["blob"] = chew(self.buf)
+
+            meta["header"]["partitions"].append(part)
+
+        meta["header"]["exheader-sha256"] = self.buf.rh(32)
+        meta["header"]["additional-header-size"] = self.buf.ru32l()
+        meta["header"]["zero-sector-offset"] = self.buf.ru32l()
+        meta["header"]["partition-flags"] = {
+            "backup-write-wait-time": self.buf.ru8(),
+            "reserved1": self.buf.ru16l(),
+            "media-card-device-sdk3": utils.unraw(
+                self.buf.ru8(),
+                1,
+                {0x00: "Undefined", 0x01: "NOR Flash", 0x02: "None", 0x03: "BT"},
+                True,
+            ),
+            "media-platform-index": utils.unraw(self.buf.ru8(), 1, {0x01: "CTR"}, True),
+            "media-type-index": utils.unraw(
+                self.buf.ru8(),
+                1,
+                {
+                    0x00: "Inner Device",
+                    0x01: "Card1",
+                    0x02: "Card2",
+                    0x03: "Extended Device",
+                },
+                True,
+            ),
+            "media-unit-size": 0x200 * (2 ** self.buf.ru8()),
+            "media-card-device-sdk2": utils.unraw(
+                self.buf.ru8(),
+                1,
+                {0x00: "Undefined", 0x01: "NOR Flash", 0x02: "None", 0x03: "BT"},
+                True,
+            ),
+        }
+        meta["header"]["partition-ids"] = [self.buf.ru64l() for i in range(0, 8)]
+        meta["header"]["reserved"] = self.buf.rh(48)
+
+        self.buf.sapunit()
+
+        return meta
