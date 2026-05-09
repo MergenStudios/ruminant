@@ -195,6 +195,7 @@ class KdbxModule(module.RuminantModule):
                         "name": {
                             "31c1f2e6-bf71-4350-be58-05216afc5aff": "AES-256 (NIST FIPS 197, CBC mode, PKCS #7 padding)",
                             "d6038a2b-8b6f-4cb5-a524-339a31dbb59a": "ChaCha20 (RFC 8439)",
+                            "ad68f29f-576f-4bb9-a36a-d47af965346c": "Twofish",
                         }.get(uuid, "Unknown"),
                     }
                 case 0x03:
@@ -341,7 +342,13 @@ class KdbxModule(module.RuminantModule):
 
         T = None
 
-        if meta["key"]["found"] and crypto.has_argon2 and mode in ("2d", "2id"):
+        if (
+            meta["key"]["found"]
+            and crypto.has_argon2
+            and mode in ("2d", "2id")
+            and encryption_algorithm in ("aes", "chacha20")
+            and compression_algorithm in (None, "gzip")
+        ):
             meta["key"]["can-decrypt"] = True
             R = hashlib.sha256(
                 hashlib.sha256(secrets.get(meta["hmac-sha256"]).encode("utf8")).digest()
@@ -399,7 +406,7 @@ class KdbxModule(module.RuminantModule):
                 case "aes":
                     content = crypto.aes_cbc_pkcs7(decyption_key, iv, content)
                 case "chacha20":
-                    content = crypto.chacha20(content, decyption_key, iv)
+                    content = crypto.chacha20(content, decyption_key, iv, 0)
 
             match compression_algorithm:
                 case "gzip":
