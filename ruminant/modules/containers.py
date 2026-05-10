@@ -3840,8 +3840,54 @@ class NcsdModule(module.RuminantModule):
             ),
         }
         meta["header"]["partition-ids"] = [self.buf.ru64l() for i in range(0, 8)]
-        meta["header"]["reserved"] = self.buf.rh(48)
+        meta["header"]["reserved1"] = self.buf.rh(48)
+        meta["header"]["writable-address"] = self.buf.ri32l()
+        meta["header"]["card-info"] = self.buf.ru32l()
+        meta["header"]["reserved2"] = self.buf.rh(248)
+        meta["header"]["cardridge-filled-size"] = self.buf.ru32l()
+        meta["header"]["reserved3"] = self.buf.rh(12)
+        meta["header"]["title-version"] = self.buf.ru16l()
+        meta["header"]["card-revision"] = self.buf.ru16l()
+        meta["header"]["reserved4"] = self.buf.rh(12)
+        meta["header"]["cver-title-id"] = self.buf.ru64l()
+        meta["header"]["cver-revision"] = self.buf.ru16l()
+
+        self.buf.pasunit(3286)
+
+        with self.buf.subunit():
+            meta["header"]["reserved5"] = chew(self.buf, blob_mode=True)
 
         self.buf.sapunit()
+
+        meta["header"]["seed"] = self.buf.rh(16)
+        meta["header"]["title-key"] = self.buf.rh(16)
+        meta["header"]["aes-ccm-mac"] = self.buf.rh(16)
+        meta["header"]["aes-ccm-nonce"] = self.buf.rh(12)
+        meta["header"]["reserved6"] = self.buf.rh(196)
+        meta["header"]["ncch-copy"] = self.buf.rh(256)
+
+        self.buf.sapunit()
+
+        return meta
+
+
+@module.register
+class NcchModule(module.RuminantModule):
+    dev = True
+    desc = "NCCH Nintendo 3DS files."
+
+    def identify(buf, ctx):
+        if buf.available() < 512:
+            return False
+
+        return buf.peek(256 + 4)[256:] == b"NCCH"
+
+    def chew(self):
+        # https://www.3dbrew.org/wiki/NCCH#NCCH_Header
+        meta = {}
+        meta["type"] = "ncch"
+
+        meta["header"] = {}
+        meta["header"]["rsa-signature"] = self.buf.rh(256)
 
         return meta
