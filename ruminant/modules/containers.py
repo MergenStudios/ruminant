@@ -3889,5 +3889,64 @@ class NcchModule(module.RuminantModule):
 
         meta["header"] = {}
         meta["header"]["rsa-signature"] = self.buf.rh(256)
+        self.buf.skip(4)
+        meta["header"]["size"] = self.buf.ru32l()
+
+        self.buf.pasunit(meta["header"]["size"] * 0x200 - 256 - 8)
+
+        meta["header"]["partition-id"] = self.buf.ru64l()
+        meta["header"]["maker-code"] = self.buf.rs(2)
+        meta["header"]["version"] = self.buf.ru16l()
+        meta["header"]["hash-prefix"] = self.buf.rh(4)
+        meta["header"]["program-id"] = self.buf.ru64l()
+        meta["header"]["reserved1"] = self.buf.rh(16)
+        meta["header"]["logo-region-hash"] = self.buf.rh(32)
+        meta["header"]["product-code"] = self.buf.rs(16)
+        meta["header"]["extended-header-hash"] = self.buf.rh(32)
+        meta["header"]["extended-header-size"] = self.buf.ru32l()
+        meta["header"]["reserved2"] = self.buf.rh(4)
+        meta["header"]["flags"] = {
+            "reserved": self.buf.rh(3),
+            "crypto-method": self.buf.ru8(),
+            "content-platform": utils.unraw(
+                self.buf.ru8(), 1, {0x01: "CTR", 0x02: "New 3DS/Snake"}, True
+            ),
+            "content-type": utils.unraw(
+                self.buf.rb(6),
+                1,
+                {
+                    0x00: "Unspecified",
+                    0x01: "System Update",
+                    0x02: "Instruction Manual",
+                    0x03: "Download Play Child",
+                    0x04: "Trial (Demo)",
+                    0x05: "Extended System Update",
+                },
+                True,
+            ),
+            "content-form-type": utils.unraw(
+                self.buf.rb(2),
+                1,
+                {
+                    0x00: "Not Assigned",
+                    0x01: "Simple Content",
+                    0x02: "Executable without RomFS",
+                    0x03: "Executable",
+                },
+                True,
+            ),
+            "content-unit-size": 0x200 * (2 ** self.buf.ru8()),
+            "bitmask": utils.unpack_flags(
+                self.buf.ru8(),
+                (
+                    (0, "FixedCryptoKey"),
+                    (1, "NoMountRomFs"),
+                    (2, "NoCrypto"),
+                    (5, "UseNewKeyYGenerator"),
+                ),
+            ),
+        }
+
+        self.buf.sapunit()
 
         return meta
