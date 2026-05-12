@@ -3882,6 +3882,32 @@ class NcchModule(module.RuminantModule):
 
         return buf.peek(256 + 4)[256:] == b"NCCH"
 
+    def read_exefs(self):
+        base = self.buf.tell()
+
+        exefs = {}
+        exefs["files"] = []
+        for i in range(0, 10):
+            f = {}
+            f["name"] = self.buf.rs(8)
+            f["offset"] = self.buf.ru32l()
+            f["size"] = self.buf.ru32l()
+
+            with self.buf:
+                self.buf.seek(base + 0x200 + f["offset"])
+
+                with self.buf.sub(f["size"]):
+                    f["blob"] = chew(self.buf, blob_mode=f["name"] in (".code",))
+
+            exefs["files"].append(f)
+
+        exefs["reserved"] = self.buf.rh(0x20)
+
+        for i in range(0, 10):
+            exefs["files"][9 - i]["hash"] = self.buf.rh(32)
+
+        return exefs
+
     def chew(self):
         # https://www.3dbrew.org/wiki/NCCH#NCCH_Header
         meta = {}
@@ -3946,6 +3972,183 @@ class NcchModule(module.RuminantModule):
                 ),
             ),
         }
+        meta["header"]["regions"] = {}
+        meta["header"]["regions"]["plain"] = {
+            "offset": self.buf.ru32l() * 0x200,
+            "size": self.buf.ru32l() * 0x200,
+        }
+        meta["header"]["regions"]["logo"] = {
+            "offset": self.buf.ru32l() * 0x200,
+            "size": self.buf.ru32l() * 0x200,
+        }
+        meta["header"]["regions"]["exefs"] = {
+            "offset": self.buf.ru32l() * 0x200,
+            "size": self.buf.ru32l() * 0x200,
+            "hash-size": self.buf.ru32l() * 0x200,
+            "reserved": self.buf.ru32l(),
+        }
+        meta["header"]["regions"]["romfs"] = {
+            "offset": self.buf.ru32l() * 0x200,
+            "size": self.buf.ru32l() * 0x200,
+            "hash-size": self.buf.ru32l() * 0x200,
+            "reserved": self.buf.ru32l(),
+        }
+        meta["header"]["exefs-superblock-hash"] = self.buf.rh(32)
+        meta["header"]["romfs-superblock-hash"] = self.buf.rh(32)
+
+        for name, region in meta["header"]["regions"].items():
+            with self.buf:
+                self.buf.seek(region["offset"])
+                with self.buf.sub(region["size"]):
+                    region["blob"] = chew(self.buf, blob_mode=True)
+
+                self.buf.seek(region["offset"])
+
+                self.buf.pasunit(region["size"])
+
+                region["parsed"] = {}
+                match name:
+                    case "plain":
+                        region["parsed"]["strings"] = []
+                        while self.buf.unit > 0:
+                            region["parsed"]["strings"].append(self.buf.rzs())
+
+                        while (
+                            len(region["parsed"]["strings"]) > 0
+                            and region["parsed"]["strings"][-1] == ""
+                        ):
+                            region["parsed"]["strings"].pop()
+                    case "exefs":
+                        region["parsed"] = self.read_exefs()
+                    case _:
+                        del region["parsed"]
+
+                self.buf.sapunit()
+
+        self.buf.sapunit()
+
+        return meta
+
+
+@module.register
+class SmdhModule(module.RuminantModule):
+    dev = True
+    desc = "Nintendo 3DS SMDH icon files."
+
+    def identify(buf, ctx):
+        return buf.peek(4) == b"SMDH"
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "smdh"
+
+        self.buf.skip(4)
+        meta["version"] = self.buf.ru16l()
+        meta["reserved1"] = self.buf.ru16l()
+
+        meta["application-structs"] = []
+        for i in range(0, 16):
+            app = {}
+            app["language"] = [
+                "Japanese",
+                "English",
+                "French",  # grr French
+                "German",
+                "Italian",
+                "Spanish",
+                "Simplified Chinese",
+                "Korean",
+                "Dutch",
+                "Portuguese",
+                "Russian",
+                "Traditional Chinese",
+                "Unknown",
+                "Unknown",
+                "Unknown",
+                "Unknown",
+            ][i]
+            app["short-description"] = self.buf.rs(0x80, "utf-16")
+            app["long-description"] = self.buf.rs(0x100, "utf-16")
+            app["publisher"] = self.buf.rs(0x80, "utf-16")
+
+            meta["application-structs"].append(app)
+
+        meta["application-settings"] = {}
+        meta["application-settings"]["ratings"] = {}
+        for i in range(0, 16):
+            rating = self.buf.ru8()
+            name = [
+                "CERO (Japan)",
+                "ESRB (USA)",
+                "Reserved 1",
+                "USK (German)",
+                "PEGI GEN (Europe)",
+                "Reserved 2",
+                "PEGI PRT (Portugal)",
+                "PEGI BBFC (England)",
+                "COB (Australia)",
+                "GRB (South Korea)",
+                "CGSRR (Taiwan)",
+                "Reserved 3",
+                "Reserved 4",
+                "Reserved 5",
+                "Reserved 6",
+                "Reserved 7",
+            ][i]
+
+            if rating == 0x00:
+                continue
+            elif rating & 0x80:
+                meta["application-settings"]["ratings"][name] = rating - 0x80
+            elif rating & 0x40:
+                meta["application-settings"]["ratings"][name] = "pending"
+            elif rating & 0x20:
+                meta["application-settings"]["ratings"][name] = "no restriction"
+
+        meta["application-settings"]["region-lockout"] = utils.unpack_flags(
+            self.buf.ru32l(),
+            (
+                (0, "Japan"),
+                (1, "North America"),
+                (2, "Europe"),
+                (3, "Australia"),
+                (4, "China"),
+                (5, "Korea"),
+                (6, "Taiwan"),
+            ),
+        )
+        meta["application-settings"]["match-maker-id"] = self.buf.ru32l()
+        meta["application-settings"]["match-maker-bit-id"] = self.buf.ru64l()
+        meta["application-settings"]["flags"] = utils.unpack_flags(
+            self.buf.ru32l(),
+            (
+                (0, "visibility"),
+                (1, "auto-boot"),
+                (2, "has-3d"),
+                (3, "requires-eula"),
+                (4, "autosave-on-exit"),
+                (5, "has-extended-banner"),
+                (6, "region-game-rating-required"),
+                (7, "uses-save-data"),
+                (8, "record-usage"),
+                (9, "disable-sdcard-save-data-backups"),
+                (10, "new-3ds-exclusive"),
+                (11, "restricted-by-parental-controls"),
+            ),
+        )
+        temp = self.buf.ru8()
+        meta["application-settings"]["eula-version"] = f"{self.buf.ru8()}.{temp}"
+        meta["application-settings"]["reserved"] = self.buf.ru16l()
+        meta["application-settings"]["optimal-animation-default-frame"] = (
+            self.buf.rf32()
+        )
+        meta["application-settings"]["cec-id"] = self.buf.ru32l()
+        meta["reserved2"] = self.buf.ru64l()
+
+        self.buf.pasunit(0x1680)
+
+        with self.buf.subunit():
+            meta["icon-graphics"] = chew(self.buf, blob_mode=True)
 
         self.buf.sapunit()
 
