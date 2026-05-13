@@ -3758,7 +3758,6 @@ class PcapNgModule(module.RuminantModule):
 
 @module.register
 class NcsdModule(module.RuminantModule):
-    dev = True
     desc = "NCSD Nintendo 3DS Game Card image files."
 
     def identify(buf, ctx):
@@ -3873,7 +3872,6 @@ class NcsdModule(module.RuminantModule):
 
 @module.register
 class NcchModule(module.RuminantModule):
-    dev = True
     desc = "NCCH Nintendo 3DS files."
 
     def identify(buf, ctx):
@@ -4077,7 +4075,6 @@ class NcchModule(module.RuminantModule):
 
 @module.register
 class SmdhModule(module.RuminantModule):
-    dev = True
     desc = "Nintendo 3DS SMDH icon files."
 
     def identify(buf, ctx):
@@ -4202,7 +4199,6 @@ class SmdhModule(module.RuminantModule):
 
 @module.register
 class DarcModule(module.RuminantModule):
-    dev = True
     desc = "Nintendo 3DS DARC archives."
 
     def identify(buf, ctx):
