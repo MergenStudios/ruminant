@@ -3882,6 +3882,43 @@ class NcchModule(module.RuminantModule):
 
         return buf.peek(256 + 4)[256:] == b"NCCH"
 
+    def read_lz11(self):
+        assert self.buf.ru8() == 0x11
+        decomp_size = self.buf.ru24l()
+
+        data = bytearray()
+
+        while len(data) < decomp_size:
+            op = self.buf.ru8()
+
+            for i in range(7, -1, -1):
+                if op & (1 << i):
+                    b1 = self.buf.ru8()
+
+                    match b1 >> 4:
+                        case 0:
+                            b2 = self.buf.ru8()
+                            count = ((b1 & 0x0f) << 4) + (b2 >> 4) + 0x11
+                            offset = ((b2 & 0x0f) << 8) + self.buf.ru8() + 1
+                        case 1:
+                            b2 = self.buf.ru8()
+                            b3 = self.buf.ru8()
+                            count = ((b1 & 0x0f) << 12) + (b2 << 4) + (b3 >> 4) + 0x111
+                            offset = ((b3 & 0x0f) << 8) + self.buf.ru8() + 1
+                        case _:
+                            count = (b1 >> 4) + 1
+                            offset = ((b1 & 0x0f) << 8) + self.buf.ru8() + 1
+
+                    for j in range(0, count):
+                        data += data[-offset : -offset + 1]
+                else:
+                    data += self.buf.read(1)
+
+                if not len(data) < decomp_size:
+                    break
+
+        return bytes(data)
+
     def read_exefs(self):
         base = self.buf.tell()
 
@@ -3897,7 +3934,13 @@ class NcchModule(module.RuminantModule):
                 self.buf.seek(base + 0x200 + f["offset"])
 
                 with self.buf.sub(f["size"]):
-                    f["blob"] = chew(self.buf, blob_mode=f["name"] in (".code",))
+                    match f["name"]:
+                        case "logo":
+                            f["blob"] = chew(self.read_lz11())
+                        case ".code":
+                            f["blob"] = chew(self.buf, blob_mode=True)
+                        case _:
+                            f["blob"] = chew(self.buf)
 
             exefs["files"].append(f)
 
@@ -3996,6 +4039,7 @@ class NcchModule(module.RuminantModule):
         meta["header"]["exefs-superblock-hash"] = self.buf.rh(32)
         meta["header"]["romfs-superblock-hash"] = self.buf.rh(32)
 
+        decrypted = "NoCrypto" in meta["header"]["flags"]["bitmask"]["names"]
         for name, region in meta["header"]["regions"].items():
             with self.buf:
                 self.buf.seek(region["offset"])
@@ -4019,7 +4063,8 @@ class NcchModule(module.RuminantModule):
                         ):
                             region["parsed"]["strings"].pop()
                     case "exefs":
-                        region["parsed"] = self.read_exefs()
+                        if decrypted:
+                            region["parsed"] = self.read_exefs()
                     case _:
                         del region["parsed"]
 
@@ -4151,5 +4196,90 @@ class SmdhModule(module.RuminantModule):
             meta["icon-graphics"] = chew(self.buf, blob_mode=True)
 
         self.buf.sapunit()
+
+        return meta
+
+
+@module.register
+class DarcModule(module.RuminantModule):
+    dev = True
+    desc = "Nintendo 3DS DARC archives."
+
+    def identify(buf, ctx):
+        return buf.peek(4) == b"darc"
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "darc"
+
+        self.buf.skip(4)
+        assert self.buf.ru16l() == 0xfeff
+
+        meta["header"] = {}
+        meta["header"]["length"] = self.buf.ru16l()
+
+        self.buf.pasunit(meta["header"]["length"] - 8)
+
+        meta["header"]["version"] = self.buf.ru32l()
+        meta["header"]["file-length"] = self.buf.ru32l()
+        meta["header"]["file-table-offset"] = self.buf.ru32l()
+        meta["header"]["file-table-length"] = self.buf.ru32l()
+        meta["header"]["file-data-offset"] = self.buf.ru32l()
+
+        self.buf.sapunit()
+
+        self.buf.seek(meta["header"]["file-table-offset"])
+        self.buf.pasunit(meta["header"]["file-table-length"])
+
+        meta["files"] = []
+        todo = None
+        while todo is None or todo > 0:
+            f = {}
+            f["name"] = self.buf.ru32l()
+            f["folder"] = bool(f["name"] & 0x01000000)
+            f["offset"] = self.buf.ru32l()
+            f["length"] = self.buf.ru32l()
+
+            if todo is None:
+                todo = f["length"]
+
+            todo -= 1
+
+            meta["files"].append(f)
+
+        self.buf.popunit()
+
+        base = self.buf.tell()
+        for f in meta["files"]:
+            self.buf.seek(base + (f["name"] & 0x0000ffff))
+            f["name"] = self.buf.rwzs()
+
+        m = [[x, None] for x in meta["files"]]
+        for i, pair in enumerate(m):
+            if pair[0]["folder"]:
+                for j in range(i + 1, pair[0]["length"]):
+                    m[j][1] = i
+
+        max_offset = meta["header"]["file-data-offset"]
+        for pair in m:
+            if not pair[0]["folder"]:
+                max_offset = max(max_offset, pair[0]["offset"] + pair[0]["length"])
+
+                self.buf.seek(pair[0]["offset"])
+                with self.buf.sub(pair[0]["length"]):
+                    pair[0]["blob"] = chew(self.buf)
+
+            if pair[1] is None:
+                continue
+
+            if "children" not in m[pair[1]][0]:
+                m[pair[1]][0]["children"] = []
+
+            m[pair[1]][0]["children"].append(pair[0])
+
+        meta["files"] = m[0][0]
+
+        self.buf.seek(max_offset)
+        meta["hmac"] = self.buf.rh(32)
 
         return meta
