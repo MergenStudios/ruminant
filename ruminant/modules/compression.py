@@ -145,16 +145,8 @@ class Bzip2Module(module.RuminantModule):
         meta = {}
         meta["type"] = "bzip2"
 
-        with self.buf:
-            offset = self.buf.tell()
-
-            # look for end sequence
-            self.buf.search(b"\x17\x72\x45\x38\x50\x90")
-            length = self.buf.tell() - offset
-            meta["length"] = length
-
         with tempfile.TemporaryFile() as fd:
-            utils.stream_bzip2(self.buf, fd, length)
+            utils.stream_bzip2(self.buf, fd, self.buf.available())
 
             # chew decompressed data
             fd.seek(0)
