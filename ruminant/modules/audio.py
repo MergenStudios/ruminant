@@ -799,12 +799,14 @@ class MidiModule(module.RuminantModule):
                 event["opcode"] = op
 
                 if op == 0xf0 or op == 0xf7:
-                    self.buf.skip(self.buf.unit)
+                    event["data-length"] = self.buf.ruleb()
+                    event["data"] = self.buf.rh(event["data-length"])
                 elif op == 0xff:
                     event["meta-event-type"] = utils.unraw(
                         self.buf.ru8(),
                         1,
                         {
+                            0x01: "Text",
                             0x21: "Port Prefix",
                             0x2f: "End Of Track",
                             0x51: "Set Tempo",
@@ -845,6 +847,8 @@ class MidiModule(module.RuminantModule):
                             event["data"] = {"port": self.buf.ru8()}
                         case "End Of Track":
                             pass
+                        case "Text":
+                            event["data"] = {"string": self.buf.rs(self.buf.unit)}
                         case _:
                             event["data"] = {"raw": self.buf.rh(self.buf.unit)}
                             event["unknown"] = True
