@@ -807,6 +807,8 @@ class MidiModule(module.RuminantModule):
                         1,
                         {
                             0x01: "Text",
+                            0x02: "Copyright Notice",
+                            0x03: "Track Name",
                             0x21: "Port Prefix",
                             0x2f: "End Of Track",
                             0x51: "Set Tempo",
@@ -847,7 +849,7 @@ class MidiModule(module.RuminantModule):
                             event["data"] = {"port": self.buf.ru8()}
                         case "End Of Track":
                             pass
-                        case "Text":
+                        case "Text" | "Copyright Notice" | "Track Name":
                             event["data"] = {"string": self.buf.rs(self.buf.unit)}
                         case _:
                             event["data"] = {"raw": self.buf.rh(self.buf.unit)}
