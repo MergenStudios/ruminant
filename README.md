@@ -121,6 +121,12 @@ Ruminant is still in early alpha but it can already process the following file t
 * ICO files
 * MP3 files
   * ID3v1/ID3v1.1 footer
+* 3DS files
+  * NCSD files
+  * NCCH files
+  * SMDH files
+  * DARC files
+* MIDI files
 
 # How do I install it?
 Run `pip3 install ruminant`.

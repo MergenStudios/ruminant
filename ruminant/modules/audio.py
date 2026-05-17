@@ -748,3 +748,152 @@ class Mp3Module(module.RuminantModule):
             )
 
         return meta
+
+
+@module.register
+class MidiModule(module.RuminantModule):
+    desc = "MIDI files."
+
+    def identify(buf, ctx):
+        return buf.peek(4) == b"MThd"
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "midi"
+
+        self.buf.skip(4)
+        meta["header-length"] = self.buf.ru32()
+
+        self.buf.pasunit(meta["header-length"])
+
+        meta["format"] = utils.unraw(
+            self.buf.ru16(),
+            1,
+            {
+                0x0000: "Single track",
+                0x0001: "Multiple tracks",
+                0x0002: "Multiple songs",
+            },
+            True,
+        )
+        meta["channel-count"] = self.buf.ru16()
+        meta["division"] = self.buf.ri16()
+
+        self.buf.sapunit()
+
+        last_opcode = 0
+        meta["tracks"] = []
+        while self.buf.peek(4) == b"MTrk":
+            track = {}
+            self.buf.skip(4)
+            track["length"] = self.buf.ru32()
+
+            self.buf.pasunit(track["length"])
+
+            track["events"] = []
+            while self.buf.unit > 0:
+                event = {}
+                event["delta"] = self.buf.ruleb()
+
+                op = self.buf.ru8()
+                event["opcode"] = op
+
+                if op == 0xf0 or op == 0xf7:
+                    self.buf.skip(self.buf.unit)
+                elif op == 0xff:
+                    event["meta-event-type"] = utils.unraw(
+                        self.buf.ru8(),
+                        1,
+                        {
+                            0x21: "Port Prefix",
+                            0x2f: "End Of Track",
+                            0x51: "Set Tempo",
+                            0x58: "Time Signature",
+                            0x59: "Key Signature",
+                        },
+                        True,
+                    )
+                    event["data-length"] = self.buf.ruleb()
+
+                    self.buf.pasunit(event["data-length"])
+
+                    match event["meta-event-type"]:
+                        case "Time Signature":
+                            event["data"] = {
+                                "numerator": self.buf.ru8(),
+                                "denominator": self.buf.ru8(),
+                                "clocks-per-metronome-tick": self.buf.ru8(),
+                                "32nds-per-24-clocks-count": self.buf.ru8(),
+                            }
+                        case "Key Signature":
+                            event["data"] = {
+                                "value": self.buf.ri8(),
+                                "key": utils.unraw(
+                                    self.buf.ru8(),
+                                    1,
+                                    {0x00: "Major", 0x01: "Minor"},
+                                    True,
+                                ),
+                            }
+                        case "Set Tempo":
+                            event["data"] = {"microseconds-per-quater": self.buf.ru24()}
+                        case "Port Prefix":
+                            event["data"] = {"port": self.buf.ru8()}
+                        case "End Of Track":
+                            pass
+                        case _:
+                            event["data"] = {"raw": self.buf.rh(self.buf.unit)}
+                            event["unknown"] = True
+
+                    self.buf.sapunit()
+                else:
+                    event["channel"] = op & 0x0f
+                    if op & 0x80:
+                        event["opcode"] = utils.unraw(
+                            op >> 4,
+                            1,
+                            {
+                                0x08: "Note Off",
+                                0x09: "Note On",
+                                0x0a: "Polyphonic Key Pressure",
+                                0x0b: "Control Change",
+                                0x0c: "Program Change",
+                                0x0d: "Channel Pressure",
+                                0x0e: "Pitch Bend Change",
+                            },
+                            True,
+                        )
+                        last_opcode = op
+                    else:
+                        del event["channel"]
+                        event["opcode"] = "Continued"
+                        op = last_opcode
+                        self.buf.skip(-1)
+
+                    match op >> 4:
+                        case 0x08 | 0x09:
+                            event["note-number"] = self.buf.ru8()
+                            event["velocity"] = self.buf.ru8()
+                        case 0x0a:
+                            event["note-number"] = self.buf.ru8()
+                            event["pressure-value"] = self.buf.ru8()
+                        case 0x0b:
+                            event["controller-number"] = self.buf.ru8()
+                            event["controller-value"] = self.buf.ru8()
+                        case 0x0c:
+                            event["program-change"] = self.buf.ru8()
+                        case 0x0d:
+                            event["pressure-value"] = self.buf.ru8()
+                        case 0x0e:
+                            event["fine-change"] = self.buf.ru8()
+                            event["coarse-change"] = self.buf.ru8()
+                        case _:
+                            event["unknown"] = True
+                            self.buf.skip(self.buf.unit)
+
+                track["events"].append(event)
+
+            self.buf.sapunit()
+            meta["tracks"].append(track)
+
+        return meta
