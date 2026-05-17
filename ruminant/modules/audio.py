@@ -836,7 +836,11 @@ class MidiModule(module.RuminantModule):
                                 ),
                             }
                         case "Set Tempo":
-                            event["data"] = {"microseconds-per-quater": self.buf.ru24()}
+                            temp = self.buf.ru24()
+                            event["data"] = {
+                                "microseconds-per-quater": temp,
+                                "estimated-bpm": round(60000000 / temp),
+                            }
                         case "Port Prefix":
                             event["data"] = {"port": self.buf.ru8()}
                         case "End Of Track":
