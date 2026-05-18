@@ -93,9 +93,11 @@ class ZeroesModule(module.RuminantModule):
 
     def identify(buf, ctx):
         with buf:
+            first = True
             s = 0
             while buf.available() > 0:
-                s += sum(buf.read(min(buf.available(), 2**24)))
+                s += sum(buf.read(min(buf.available(), 65536 if first else 2**24)))
+                first = False
                 if s != 0:
                     return False
 

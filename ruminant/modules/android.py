@@ -272,6 +272,66 @@ class AndroidBootImgModule(module.RuminantModule):
         meta["header"]["header-version"] = self.buf.ru32l()
         self.buf.seek(8)
         match meta["header"]["header-version"]:
+            case 0:
+                meta["header"]["kernel-size"] = self.buf.ru32l()
+                meta["header"]["kernel-address"] = self.buf.ru32l()
+                meta["header"]["ramdisk-size"] = self.buf.ru32l()
+                meta["header"]["ramdisk-address"] = self.buf.ru32l()
+                meta["header"]["second-size"] = self.buf.ru32l()
+                meta["header"]["second-address"] = self.buf.ru32l()
+                meta["header"]["tags-address"] = self.buf.ru32l()
+                meta["header"]["page-size"] = self.buf.ru32l()
+                meta["header"]["unused"] = self.buf.ru32l()
+                meta["header"]["os-version"] = self.buf.ru32l()
+                meta["header"]["name"] = self.buf.rs(16)
+                meta["header"]["cmdline"] = self.buf.rs(512)
+                meta["header"]["id"] = self.buf.rh(32)
+                meta["header"]["extra-cmdline"] = self.buf.rs(1024)
+
+                if self.buf.tell() % meta["header"]["page-size"]:
+                    self.buf.skip(
+                        meta["header"]["page-size"]
+                        - (self.buf.tell() % meta["header"]["page-size"])
+                    )
+
+                self.buf.pasunit(meta["header"]["kernel-size"])
+
+                with self.buf.subunit():
+                    meta["kernel"] = chew(self.buf)
+
+                self.buf.sapunit()
+
+                if self.buf.tell() % meta["header"]["page-size"]:
+                    self.buf.skip(
+                        meta["header"]["page-size"]
+                        - (self.buf.tell() % meta["header"]["page-size"])
+                    )
+
+                self.buf.pasunit(meta["header"]["ramdisk-size"])
+
+                with self.buf.subunit():
+                    meta["ramdisk"] = chew(self.buf)
+
+                self.buf.sapunit()
+
+                if self.buf.tell() % meta["header"]["page-size"]:
+                    self.buf.skip(
+                        meta["header"]["page-size"]
+                        - (self.buf.tell() % meta["header"]["page-size"])
+                    )
+
+                self.buf.pasunit(meta["header"]["second-size"])
+
+                with self.buf.subunit():
+                    meta["second"] = chew(self.buf)
+
+                self.buf.sapunit()
+
+                if self.buf.tell() % meta["header"]["page-size"]:
+                    self.buf.skip(
+                        meta["header"]["page-size"]
+                        - (self.buf.tell() % meta["header"]["page-size"])
+                    )
             case 3 | 4:
                 meta["header"]["kernel-size"] = self.buf.ru32l()
                 meta["header"]["ramdisk-size"] = self.buf.ru32l()
