@@ -104,6 +104,7 @@ class IsoModule(module.RuminantModule):
             "asoc",
             "jumb",
             "wave",
+            "book",
         ) or (typ[0] == "©" and self.buf.peek(8)[4:8] == b"data"):
             self.read_more(atom)
         elif typ in ("ftyp", "styp"):
@@ -1295,6 +1296,17 @@ class IsoModule(module.RuminantModule):
                 desc["coordinates"] = [self.buf.ru32l() for j in range(0, 3)]
 
                 atom["data"]["channel-descriptors"].append(desc)
+        elif typ == "saut":
+            self.read_version(atom)
+            atom["data"]["value"] = self.buf.ru16()
+        elif typ in ("vrdt", "metd", "ampl"):
+            # silly Samsung
+            with self.buf.subunit():
+                atom["data"]["value"] = chew(self.buf)
+        elif typ == "bkmk":
+            atom["data"]["value"] = self.buf.ru32()
+            atom["data"]["title"] = self.buf.rs(100, "utf-16be")
+            atom["data"]["description"] = self.buf.rs(self.buf.unit, "utf-16be")
         elif typ[0] == "©" or typ in ("iods", "SDLN", "smrd"):
             if typ[:2] == "©T" and self.buf.pu16() == self.buf.unit - 4:
                 length = self.buf.ru16()
@@ -1375,7 +1387,7 @@ class IsoModule(module.RuminantModule):
         elif typ in ("lpcm", "beam"):
             # TODO
             pass
-        elif typ[0] == "\x00" or typ in ("mdat", "wide", "jp2c"):
+        elif typ[0] == "\x00" or typ in ("mdat", "wide", "jp2c", "bnum"):
             pass
         else:
             atom["unknown"] = True
