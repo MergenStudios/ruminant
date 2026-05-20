@@ -1298,7 +1298,34 @@ class IsoModule(module.RuminantModule):
                 atom["data"]["channel-descriptors"].append(desc)
         elif typ == "saut":
             self.read_version(atom)
-            atom["data"]["value"] = self.buf.ru16()
+            atom["data"]["flag"] = self.buf.ru8()
+            atom["data"]["mode"] = utils.unraw(
+                self.buf.ru8(),
+                1,
+                {
+                    0x00: "EMPTY",
+                    0x01: "VR_NORMAL",
+                    0x02: "INTERVIEW",
+                    0x03: "MEETING",
+                    0x04: "VR_STT",
+                    0x05: "ATTACH",
+                    0x06: "LIMIT_FOR_MMS",
+                    0x07: "VR_AUTO_STT",
+                    0x64: "CALL_NORMAL",
+                    0x65: "CALL_STT",
+                    0x96: "INTERPRETER_NORMAL",
+                    0x97: "INTERPRETER_STT",
+                    0x9c: "FM_RADIO_NORMAL",
+                    0x9d: "FM_RADIO_STT",
+                    0xaa: "VOICEMAIL_NORMAL",
+                    0xab: "VOICEMAIL_STT",
+                    0xc8: "NOTES_NORMAL",
+                    0xc9: "NOTES_STT",
+                    0xfc: "OTHER_RECORDING_STT",
+                    0xff: "OTHER_RECORDING_NORMAL",
+                },
+                True,
+            )
         elif typ in ("vrdt", "metd", "ampl"):
             # silly Samsung
             with self.buf.subunit():
