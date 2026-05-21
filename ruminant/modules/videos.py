@@ -297,14 +297,15 @@ class IsoModule(module.RuminantModule):
                 atom["data"]["reserved5"] = self.buf.rb(5)
                 atom["data"]["bit-depth-chroma-minus-eight"] = self.buf.rb(3)
 
-                atom["data"]["picture-parameter-set-ext-count"] = self.buf.ru8()
-                atom["data"]["picture-parameter-set-exts"] = []
-                for i in range(0, atom["data"]["picture-parameter-set-ext-count"]):
-                    self.buf.pasunit(self.buf.ru16())
-                    atom["data"]["picture-parameter-set-exts"].append(
-                        self.read_h264_nalu()
-                    )
-                    self.buf.sapunit()
+                if self.buf.unit > 0:
+                    atom["data"]["picture-parameter-set-ext-count"] = self.buf.ru8()
+                    atom["data"]["picture-parameter-set-exts"] = []
+                    for i in range(0, atom["data"]["picture-parameter-set-ext-count"]):
+                        self.buf.pasunit(self.buf.ru16())
+                        atom["data"]["picture-parameter-set-exts"].append(
+                            self.read_h264_nalu()
+                        )
+                        self.buf.sapunit()
         elif typ == "colr":
             if self.mode == "jp2":
                 atom["data"]["method"] = self.buf.ru8()
@@ -1334,6 +1335,20 @@ class IsoModule(module.RuminantModule):
             atom["data"]["value"] = self.buf.ru32()
             atom["data"]["title"] = self.buf.rs(100, "utf-16be")
             atom["data"]["description"] = self.buf.rs(self.buf.unit, "utf-16be")
+        elif typ == "tmcd":
+            if self.buf.unit > 8 and self.buf.peek(8)[4:] == b"tcmi":
+                self.read_more(atom)
+            else:
+                atom["data"]["hex"] = self.buf.rh(self.buf.unit)
+        elif typ == "tcmi":
+            self.read_version(atom)
+            atom["data"]["text-font"] = self.buf.ru16()
+            atom["data"]["text-face"] = self.buf.ru16()
+            atom["data"]["text-size"] = self.buf.ru16()
+            atom["data"]["reserved"] = self.buf.ru16()
+            atom["data"]["text-color"] = [self.buf.ru16() for i in range(0, 3)]
+            atom["data"]["background-color"] = [self.buf.ru16() for i in range(0, 3)]
+            atom["data"]["font-name"] = self.buf.rs(self.buf.ru8())
         elif typ[0] == "©" or typ in ("iods", "SDLN", "smrd"):
             if typ[:2] == "©T" and self.buf.pu16() == self.buf.unit - 4:
                 length = self.buf.ru16()
