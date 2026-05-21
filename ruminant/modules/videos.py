@@ -105,6 +105,8 @@ class IsoModule(module.RuminantModule):
             "jumb",
             "wave",
             "book",
+            "sv3d",
+            "proj",
         ) or (typ[0] == "©" and self.buf.peek(8)[4:8] == b"data"):
             self.read_more(atom)
         elif typ in ("ftyp", "styp"):
@@ -1349,6 +1351,35 @@ class IsoModule(module.RuminantModule):
             atom["data"]["text-color"] = [self.buf.ru16() for i in range(0, 3)]
             atom["data"]["background-color"] = [self.buf.ru16() for i in range(0, 3)]
             atom["data"]["font-name"] = self.buf.rs(self.buf.ru8())
+        elif typ == "st3d":
+            # https://github.com/google/spatial-media/blob/master/docs/spherical-video-v2-rfc.md#stereoscopic-3d-video-box-st3d
+            self.read_version(atom)
+            atom["data"]["stereo-mode"] = utils.unraw(
+                self.buf.ru8(),
+                1,
+                {
+                    0x00: "Monoscopic",
+                    0x01: "Stereoscopic Top-Bottom",
+                    0x02: "Stereoscopic Left-Right",
+                    0x03: "Stereoscopic Stereo-Custom",
+                    0x04: "Stereoscopic Right-Left",
+                },
+                True,
+            )
+        elif typ == "svhd":
+            self.read_version(atom)
+            atom["data"]["metadata-source"] = self.buf.rs(self.buf.unit)
+        elif typ == "prhd":
+            self.read_version(atom)
+            atom["data"]["pose-yaw-degrees"] = self.buf.ru32()
+            atom["data"]["pose-pitch-degrees"] = self.buf.ru32()
+            atom["data"]["pose-roll-degrees"] = self.buf.ru32()
+        elif typ == "equi":
+            self.read_version(atom)
+            atom["data"]["projection-bounds-top"] = self.buf.ru32()
+            atom["data"]["projection-bounds-bottom"] = self.buf.ru32()
+            atom["data"]["projection-bounds-left"] = self.buf.ru32()
+            atom["data"]["projection-bounds-right"] = self.buf.ru32()
         elif typ[0] == "©" or typ in ("iods", "SDLN", "smrd"):
             if typ[:2] == "©T" and self.buf.pu16() == self.buf.unit - 4:
                 length = self.buf.ru16()
