@@ -1,4 +1,4 @@
-from . import modules, module, constants, utils, gui, secrets
+from . import modules, module, constants, utils, secrets
 from .buf import Buf
 import argparse
 import sys
@@ -6,7 +6,6 @@ import json
 import tempfile
 import os
 import re
-import io
 import urllib.request
 from urllib.parse import urlparse, urlunparse
 
@@ -219,13 +218,6 @@ def main(dev=False):
         "--extract-all", action="store_true", help="Extract all blobs to blobs/{id}.bin"
     )
 
-    if gui.has_gui:
-        parser.add_argument(
-            "--gui",
-            action="store_true",
-            help="Don't print to stdout, open GUI instead.",
-        )
-
     parser.add_argument(
         "--filename-regex",
         default=".*",
@@ -395,12 +387,6 @@ def main(dev=False):
     global slim
     slim = args.slim
 
-    # GUI mode
-    if gui.has_gui and args.gui:
-        # redirect stdout to capture and parse it later
-        old_stdout = sys.stdout
-        sys.stdout = io.StringIO()
-
     # /dev/stdin isn't seekable so we copy it into a temporary file
     if args.file == "/dev/stdin":
         file = tempfile.TemporaryFile()
@@ -496,11 +482,3 @@ def main(dev=False):
             except FileNotFoundError:
                 print("File not found.", file=sys.stderr)
                 exit(1)
-
-        if gui.has_gui and args.gui:
-            # swap stdout back
-            data = sys.stdout.getvalue()
-            sys.stdout = old_stdout
-
-            # start GUI
-            gui.GUI.run(json.loads(data))
