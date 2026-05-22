@@ -200,26 +200,22 @@ class IsoModule(module.RuminantModule):
             atom["data"] = self.read_atom()
         elif typ == "elst":
             version = self.read_version(atom)
-            atom["data"]["entries"] = []
             entry_count = self.buf.ru32()
             atom["data"]["entry-count"] = entry_count
 
-            for i in range(0, entry_count):
+            atom["data"]["entries"] = []
+            for i in range(0, entry_count & 0x00ffffff):
+                entry = {}
                 if version == 0:
-                    segment_duration = self.buf.ru32()
-                    media_time = self.buf.ru32()
+                    entry["segment-duration"] = self.buf.ru32()
+                    entry["media-time"] = self.buf.ru32()
                 elif version == 1:
-                    segment_duration = self.buf.ru64()
-                    media_time = self.buf.ru64()
+                    entry["segment-duration"] = self.buf.ru64()
+                    entry["media-time"] = self.buf.ru64()
 
-                if version in (0, 1):
-                    entry = {}
-                    entry["segment-duration"] = segment_duration
-                    entry["media-time"] = media_time
-                    entry["media_rate_integer"] = self.buf.ru16()
-                    entry["media_rate_fraction"] = self.buf.ru16()
-
-                    atom["data"]["entries"].append(entry)
+                entry["media_rate_integer"] = self.buf.ru16()
+                entry["media_rate_fraction"] = self.buf.ru16()
+                atom["data"]["entries"].append(entry)
         elif typ == "mdhd":
             version = self.read_version(atom)
 
