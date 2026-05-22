@@ -23,8 +23,8 @@ license-files = ["LICENSE"]
 ruminant = "ruminant.main:main"
 
 [project.urls]
-"Homepage" = "https://github.com/jakiki6/ruminant"
-"Issues" = "https://github.com/jakiki6/ruminant/issues"
+"Homepage" = "https://github.com/laura240406/ruminant"
+"Issues" = "https://github.com/laura240406/ruminant/issues"
 
 [project.optional-dependencies]
 full = [
