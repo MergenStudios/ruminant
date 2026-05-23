@@ -33,8 +33,11 @@ class IsoModule(module.RuminantModule):
         while self.buf.available() >= 8:
             file["atoms"].append(self.read_atom())
 
-        with self.buf:
-            self.parse_mdat(file["atoms"])
+        try:
+            with self.buf:
+                file["streams"] = self.parse_mdat(file["atoms"])
+        except Exception:
+            pass
 
         return file
 
@@ -1466,160 +1469,36 @@ class IsoModule(module.RuminantModule):
 
         return atom
 
-    def find_stream_type(self, atoms):
-        t = None
+    def get_all(self, atoms, typ):
+        if isinstance(typ, str):
+            typ = [typ]
 
+        result = []
         for atom in atoms:
-            if t is not None:
-                break
+            if atom["type"] in typ:
+                result.append(atom)
 
-            match atom["type"]:
-                case "hvc1":
-                    t = "hvec"
-                case "avc1":
-                    t = "avc1"
-                case "vp09":
-                    t = "vp9"
-
-            if t is None and "atoms" in atom["data"]:
-                t = self.find_stream_type(atom["data"]["atoms"])
-
-        return t
-
-    def find_avcC_length(self, atoms):
-        length = None
-
-        for atom in atoms:
-            if length is not None:
-                break
-
-            if atom["type"] == "avcC":
-                length = atom["data"]["lengthSizeMinusOne"] & 0x03 + 1
-
-            if length is None and "atoms" in atom["data"]:
-                length = self.find_avcC_length(atom["data"]["atoms"])
-
-        return length
-
-    def parse_sei(self, seis):
-        count = 1000  # prevent OOM from that stupid torrent
-
-        while self.buf.unit > 0 and count > 0:
-            count -= 1
-
-            t = 0
-            while True:
-                b = self.buf.ru8()
-                t += b
-                if b != 0xff:
-                    break
-
-            l = 0
-            while True:
-                b = self.buf.ru8()
-                l += b
-                if b != 0xff:
-                    break
-
-            if l >= 65536:
-                self.buf.skip(l)
-                continue
-
-            data = self.buf.read(l)
-            sei = {
-                "type": t,
-                "length": l,
-            }
-
-            if data[:16].hex() == "dc45e9bde6d948b7962cd820d923eeef":
-                sei["data"] = {
-                    "uuid": data[:16].hex(),
-                    "libx264-banner": data[16:-1].decode("utf-8"),
-                }
-                seis.append(sei)
-
-    def parse_mdat_hvec(self, atoms):
-        mdat = None
-        for atom in atoms:
-            if atom["type"] == "mdat":
-                mdat = atom
-
-        if mdat is None:
-            return
-
-        mdat["data"]["type"] = "hvec"
-
-    def parse_mdat_avc1(self, atoms):
-        mdat = None
-        for atom in atoms:
-            if atom["type"] == "mdat":
-                mdat = atom
-
-        if mdat is None:
-            return
-
-        mdat["data"]["type"] = "avc1"
-
-        nal_length = self.find_avcC_length(atoms)
-        if nal_length is None:
-            return
-
-        self.buf.seek(mdat["offset"])
-        self.buf.setunit(mdat["length"])
-
-        self.buf.skip(8)
-
-        mdat["data"]["sei"] = []
-        while self.buf.unit > 0:
-            length = int.from_bytes(self.buf.read(nal_length), "big")
-            if length == 0:
-                break
-
-            self.buf.pushunit()
-            self.buf.setunit(length - 1)
-
-            t = self.buf.ru8() & 0b00011111
-
-            if t == 6:
-                self.parse_sei(mdat["data"]["sei"])
-
-            self.buf.skipunit()
-            self.buf.popunit()
-
-        if len(mdat["data"]["sei"]) == 0:
-            del mdat["data"]["sei"]
+        return result
 
     def parse_mdat(self, atoms):
-        stream_type = self.find_stream_type(atoms)
+        moov = self.get_all(atoms, "moov")[0]["data"]["atoms"]
+        traks = self.get_all(moov, "trak")
 
-        try:
-            match stream_type:
-                case "avc1":
-                    self.parse_mdat_avc1(atoms)
+        streams = []
+        for trak in traks:
+            mdia = self.get_all(trak["data"]["atoms"], "mdia")[0]
+            minf = self.get_all(mdia["data"]["atoms"], "minf")[0]
+            stbl = self.get_all(minf["data"]["atoms"], "stbl")[0]
+            stsd = self.get_all(stbl["data"]["atoms"], "stsd")[0]
+            # chunk_offset = self.get_all(stbl["data"]["atoms"], ("stco", "co64"))[0]
+            codec = stsd["data"]["atoms"][0]["type"]
 
-                #                case "hvec":
-                #                    self.parse_mdat_hvec(atoms)
-                case _:
-                    for atom in atoms:
-                        if atom["type"] == "mdat":
-                            atom["data"]["type"] = (
-                                stream_type if stream_type is not None else "unknown"
-                            )
-                            atom["data"]["unknown"] = True
+            stream = {}
+            stream["type"] = codec
 
-                            self.buf.seek(atom["offset"])
+            streams.append(stream)
 
-                            self.buf.pushunit()
-                            self.buf.setunit(atom["length"])
-                            self.buf.skip(8)
-
-                            with self.buf.subunit():
-                                atom["data"]["raw"] = chew(self.buf, blob_mode=True)
-
-                            self.buf.popunit()
-        except Exception:
-            # sei parsing can fail with cenc extensions
-            pass
+        return streams
 
     def read_esds(self):
         # see ISO/IEC 14496-1
