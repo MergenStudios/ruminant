@@ -36,7 +36,8 @@ class IsoModule(module.RuminantModule):
         try:
             with self.buf:
                 file["streams"] = self.parse_mdat(file["atoms"])
-        except Exception:
+        except Exception as e:
+            raise e
             pass
 
         return file
@@ -1459,6 +1460,9 @@ class IsoModule(module.RuminantModule):
         elif typ in ("lpcm", "beam"):
             # TODO
             pass
+        elif typ == "mdat":
+            with self.buf.subunit():
+                atom["data"]["blob"] = chew(self.buf, blob_mode=True)
         elif typ[0] == "\x00" or typ in ("mdat", "wide", "jp2c", "bnum"):
             pass
         else:
@@ -1490,15 +1494,126 @@ class IsoModule(module.RuminantModule):
             minf = self.get_all(mdia["data"]["atoms"], "minf")[0]
             stbl = self.get_all(minf["data"]["atoms"], "stbl")[0]
             stsd = self.get_all(stbl["data"]["atoms"], "stsd")[0]
-            # chunk_offset = self.get_all(stbl["data"]["atoms"], ("stco", "co64"))[0]
+            stco_co64 = self.get_all(stbl["data"]["atoms"], ("stco", "co64"))[0]
+            stsc = self.get_all(stbl["data"]["atoms"], "stsc")[0]
+            stsz = self.get_all(stbl["data"]["atoms"], "stsz")[0]
+
             codec = stsd["data"]["atoms"][0]["type"]
 
             stream = {}
             stream["type"] = codec
 
+            self.buf.seek(stsz["offset"])
+            self.buf.pasunit(stsz["length"])
+
+            self.buf.skip(12)
+            sample_size = self.buf.ru32()
+            sample_count = self.buf.ru32()
+
+            if sample_size:
+                sample_sizes = [sample_size] * sample_count
+            else:
+                temp = self.buf.read(4 * sample_count)
+                sample_sizes = [
+                    int.from_bytes(temp[i : i + 4], "big")
+                    for i in range(0, 4 * sample_count, 4)
+                ]
+
+            self.buf.sapunit()
+
+            self.buf.seek(stco_co64["offset"])
+            self.buf.pasunit(stco_co64["length"])
+
+            self.buf.skip(12)
+            chunk_count = self.buf.ru32()
+
+            if stco_co64["type"] == "stco":
+                temp = self.buf.read(4 * chunk_count)
+                chunk_offsets = [
+                    int.from_bytes(temp[i : i + 4], "big")
+                    for i in range(0, 4 * chunk_count, 4)
+                ]
+            else:
+                temp = self.buf.read(8 * chunk_count)
+                chunk_offsets = [
+                    int.from_bytes(temp[i : i + 8], "big")
+                    for i in range(0, 8 * chunk_count, 8)
+                ]
+
+            self.buf.sapunit()
+
+            self.buf.seek(stsc["offset"])
+            self.buf.pasunit(stsc["length"])
+
+            self.buf.skip(12)
+            entries = [
+                (self.buf.ru32(), self.buf.ru32(), self.buf.ru32())
+                for i in range(0, self.buf.ru32())
+            ]
+
+            entries.append((chunk_count + 1, 1, 1))
+            sample_to_offset = []
+            for i in range(0, len(entries) - 1):
+                start_chunk, sample_count, _ = entries[i]
+                end_chunk, _, _ = entries[i + 1]
+
+                for i in range(start_chunk, end_chunk):
+                    chunk_offset = chunk_offsets[i - 1]
+                    for j in range(0, sample_count):
+                        sample_to_offset.append(chunk_offset)
+                        chunk_offset += sample_sizes[len(sample_to_offset) - 1]
+
+            self.buf.popunit()
+
+            stream["sample-count"] = len(sample_to_offset)
+            stream["data"] = self.process_stream(
+                stsd["data"]["atoms"][0], sample_to_offset, sample_sizes
+            )
+
             streams.append(stream)
 
         return streams
+
+    def read_sample(self, index, sample_to_offset, sample_sizes):
+        self.buf.seek(sample_to_offset[index])
+        return self.buf.read(sample_sizes[index])
+
+    def process_stream(self, codec, sample_to_offset, sample_sizes):
+        data = {}
+
+        match codec["type"]:
+            case "avc1":
+                self.buf.seek(sample_to_offset[0])
+                self.buf.pasunit(sample_sizes[0])
+
+                avcC = self.get_all(codec["data"]["atoms"], "avcC")[0]
+                nal_length_size = (avcC["data"]["length-size-minus-one"] & 0x03) + 1
+                data["nal-length-size"] = nal_length_size
+
+                data["first-sample-nals"] = []
+                while self.buf.unit > 0:
+                    nalu = {}
+                    nalu["length"] = int.from_bytes(
+                        self.buf.read(nal_length_size), "big"
+                    )
+
+                    self.buf.pasunit(nalu["length"])
+
+                    nalu["payload"] = self.read_h264_nalu(slim=True)
+
+                    self.buf.sapunit()
+
+                    data["first-sample-nals"].append(nalu)
+
+                self.buf.sapunit()
+            case _:
+                self.buf.seek(sample_to_offset[0])
+                with self.buf.sub(sample_sizes[0]):
+                    data["first-sample"] = chew(self.buf, blob_mode=True)
+
+                data["unknown"] = True
+
+        return data
 
     def read_esds(self):
         # see ISO/IEC 14496-1
@@ -1646,7 +1761,7 @@ class IsoModule(module.RuminantModule):
 
         return tlv
 
-    def read_h264_nalu(self):
+    def read_h264_nalu(self, slim=False):
         nal = {}
         nal["forbidden-zero-bit"] = self.buf.rb(1)
         nal["ref-idc"] = self.buf.rb(2)
@@ -1654,7 +1769,11 @@ class IsoModule(module.RuminantModule):
         nal["unit-type"] = utils.unraw(
             self.buf.rb(5),
             1,
-            {0x07: "Sequence parameter set", 0x08: "Picture parameter set"},
+            {
+                0x06: "Supplemental Enhancement Information",
+                0x07: "Sequence parameter set",
+                0x08: "Picture parameter set",
+            },
             True,
         )
 
@@ -1691,8 +1810,34 @@ class IsoModule(module.RuminantModule):
                 # TODO: implement rest
                 self.buf.align()
                 nal["rest"] = self.buf.rh(self.buf.unit)
+            case "Supplemental Enhancement Information":
+                t = 0
+                while True:
+                    b = self.buf.ru8()
+                    t += b
+                    if b != 0xff:
+                        break
+
+                l = 0
+                while True:
+                    b = self.buf.ru8()
+                    l += b
+                    if b != 0xff:
+                        break
+
+                nal["type"] = utils.unraw(t, 1, {0x05: "user_data_unregistered"}, True)
+                nal["length"] = l
+
+                self.buf.pasunit(l)
+
+                if self.buf.peek(16).hex() == "dc45e9bde6d948b7962cd820d923eeef":
+                    nal["uuid"] = self.buf.ruuid()
+                    nal["libx264-banner"] = self.buf.rs(self.buf.unit)
+
+                self.buf.sapunit()
             case _:
-                nal["payload"] = self.buf.rh(self.buf.unit)
+                if not slim:
+                    nal["payload"] = self.buf.rh(self.buf.unit)
                 nal["unknown"] = True
 
         return nal
