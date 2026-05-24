@@ -1774,3 +1774,51 @@ class OsmPbfFormat(module.RuminantModule):
             meta["blobs"].append(blob)
 
         return meta
+
+
+@module.register
+class StlModule(module.RuminantModule):
+    priority = 1
+    desc = "STL 3D model files."
+
+    def identify(buf, ctx):
+        try:
+            with buf:
+                buf.skip(80)
+                triangle_count = buf.ru32l()
+                assert triangle_count > 0
+                return buf.available() >= triangle_count * 50
+
+                for i in range(0, triangle_count):
+                    buf.skip(48)
+                    assert buf.ru16l() == 0
+
+        except Exception:
+            return False
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "stl"
+
+        meta["header"] = self.buf.rs(80)
+        meta["triangle-count"] = self.buf.ru32l()
+
+        minv = [0.0, 0.0, 0.0]
+        maxv = [0.0, 0.0, 0.0]
+        for i in range(0, meta["triangle-count"]):
+            self.buf.skip(12)
+
+            for j in range(0, 3):
+                v = (self.buf.rf32l(), self.buf.rf32l(), self.buf.rf32l())
+                minv[0] = min(minv[0], v[0])
+                minv[1] = min(minv[1], v[1])
+                minv[2] = min(minv[2], v[2])
+                maxv[0] = max(maxv[0], v[0])
+                maxv[1] = max(maxv[1], v[1])
+                maxv[2] = max(maxv[2], v[2])
+
+            self.buf.skip(2)
+
+        meta["bounding-box"] = [minv, maxv]
+
+        return meta

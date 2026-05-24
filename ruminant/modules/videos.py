@@ -1606,6 +1606,10 @@ class IsoModule(module.RuminantModule):
                     data["first-sample-nals"].append(nalu)
 
                 self.buf.sapunit()
+            case "mp4a":
+                self.buf.seek(sample_to_offset[0])
+                with self.buf.sub(sample_sizes[0]):
+                    data["first-sample"] = chew(self.buf)
             case _:
                 self.buf.seek(sample_to_offset[0])
                 with self.buf.sub(sample_sizes[0]):

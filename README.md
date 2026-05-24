@@ -127,6 +127,7 @@ Ruminant is still in early alpha but it can already process the following file t
   * SMDH files
   * DARC files
 * MIDI files
+* binary STL files
 
 # How do I install it?
 Run `pip3 install ruminant`.
