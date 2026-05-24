@@ -17,6 +17,7 @@ class Buf(object):
             isinstance(source, io.IOBase)
             or isinstance(source, tempfile._TemporaryFileWrapper)
             or hasattr(source, "_buf_magic")
+            or source.__class__.__name__ in ("mmap")
         ):
             self._file = source
         else:
