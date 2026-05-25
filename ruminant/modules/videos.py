@@ -36,8 +36,7 @@ class IsoModule(module.RuminantModule):
         try:
             with self.buf:
                 file["streams"] = self.parse_mdat(file["atoms"])
-        except Exception as e:
-            raise e
+        except Exception:
             pass
 
         return file
