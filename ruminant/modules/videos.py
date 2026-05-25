@@ -216,8 +216,8 @@ class IsoModule(module.RuminantModule):
                     entry["segment-duration"] = self.buf.ru64()
                     entry["media-time"] = self.buf.ru64()
 
-                entry["media_rate_integer"] = self.buf.ru16()
-                entry["media_rate_fraction"] = self.buf.ru16()
+                entry["media-rate-integer"] = self.buf.ru16()
+                entry["media-rate-fraction"] = self.buf.ru16()
                 atom["data"]["entries"].append(entry)
         elif typ == "mdhd":
             version = self.read_version(atom)
@@ -322,62 +322,43 @@ class IsoModule(module.RuminantModule):
                         atom["data"]["transfer-characteristics"] = self.buf.ru16()
                         atom["data"]["matrix-coefficients"] = self.buf.ru16()
                     case "rICC" | "prof":
-                        atom["data"]["icc_profile_data"] = chew(
+                        atom["data"]["icc-profile-data"] = chew(
                             b"ICC_PROFILE\x00\x00\x00" + self.buf.readunit()
                         )
                     case "nclx":
                         atom["data"]["color-primaries"] = self.buf.ru16()
                         atom["data"]["transfer-characteristics"] = self.buf.ru16()
                         atom["data"]["matrix-coefficients"] = self.buf.ru16()
-                        full_range_flag = self.buf.ru8()
-                        atom["data"]["full_range_flag"] = {
-                            "raw": full_range_flag,
-                            "full": bool(full_range_flag & 0x80),
-                        }
+                        atom["data"]["flags"] = utils.unpack_flags(
+                            self.buf.ru8(), ((7, "full-range"),)
+                        )
         elif typ == "pasp":
-            atom["data"]["hSpacing"] = self.buf.ru32()
-            atom["data"]["vSpacing"] = self.buf.ru32()
+            atom["data"]["h-spacing"] = self.buf.ru32()
+            atom["data"]["v-spacing"] = self.buf.ru32()
         elif typ == "btrt":
             atom["data"]["buffer-size"] = self.buf.ru32()
             atom["data"]["max-bitrate"] = self.buf.ru32()
             atom["data"]["avg-bitrate"] = self.buf.ru32()
-        elif typ == "stts":
+        elif typ in ("stts", "stss", "ctts", "stsc", "stco", "co64"):
             self.read_version(atom)
-            entry_count = self.buf.ru32()
-            atom["data"]["entry-count"] = entry_count
-        elif typ == "stss":
-            self.read_version(atom)
-            entry_count = self.buf.ru32()
-            atom["data"]["entry-count"] = entry_count
-        elif typ == "ctts":
-            self.read_version(atom)
-            entry_count = self.buf.ru32()
-            atom["data"]["entry-count"] = entry_count
-        elif typ == "stsc":
-            self.read_version(atom)
-            entry_count = self.buf.ru32()
-            atom["data"]["entry-count"] = entry_count
+            atom["data"]["entry-count"] = self.buf.ru32()
         elif typ == "stsz":
             self.read_version(atom)
             atom["data"]["sample-size"] = self.buf.ru32()
             atom["data"]["sample-count"] = self.buf.ru32()
-        elif typ == "stco":
-            self.read_version(atom)
-            entry_count = self.buf.ru32()
-            atom["data"]["entry-count"] = entry_count
         elif typ == "sgpd":
-            version = self.buf.ru8()
-            atom["data"]["version"] = version
-            flags = self.buf.ru24()
-            atom["data"]["flags"] = {
-                "raw": flags,
-                "variable-length": bool(flags & 1),
-            }
+            atom["data"]["version"] = self.buf.ru8()
+            atom["data"]["flags"] = utils.unpack_flags(
+                self.buf.ru24(), ((0, "variable-length"),)
+            )
 
             atom["data"]["grouping-type"] = self.buf.rs(4)
 
             default_length = 0
-            if version == 1 and flags & 1 == 0:
+            if (
+                atom["data"]["version"] == 1
+                and "variable-length" not in atom["data"]["flags"]["names"]
+            ):
                 default_length = self.buf.ru32()
 
             entry_count = self.buf.ru32()
@@ -401,7 +382,7 @@ class IsoModule(module.RuminantModule):
             for i in range(0, entry_count):
                 atom["data"]["entries"].append({
                     "sample-count": self.buf.ru32(),
-                    "group_description_index": self.buf.ru32(),
+                    "group-description-index": self.buf.ru32(),
                 })
         elif typ == "smhd":
             self.read_version(atom)
@@ -432,31 +413,27 @@ class IsoModule(module.RuminantModule):
                 else:
                     with self.buf.subunit():
                         atom["data"]["content"] = chew(self.buf)
-        elif typ == "co64":
-            self.read_version(atom)
-            entry_count = self.buf.ru32()
-            atom["data"]["entry-count"] = entry_count
         elif typ == "sdtp":
             self.read_version(atom)
-            atom["data"]["sample_dep_type_count"] = len(self.buf.readunit())
+            atom["data"]["sample-dep-type-count"] = len(self.buf.readunit())
         elif typ == "vpcC":
             atom["data"]["profile"] = self.buf.ru8()
             atom["data"]["level"] = self.buf.ru8()
             atom["data"]["bit-depth"] = self.buf.ru8()
             atom["data"]["chroma-subsampling"] = self.buf.ru8()
-            atom["data"]["video_full_range_flag"] = self.buf.ru8()
+            atom["data"]["video-full-range-flag"] = self.buf.ru8()
             atom["data"]["reserved"] = self.buf.rh(3)
         elif typ == "trex":
             self.read_version(atom)
             atom["data"]["track-id"] = self.buf.ru32()
-            atom["data"]["default_sample_description_index"] = self.buf.ru32()
-            atom["data"]["default_sample_duration"] = self.buf.ru32()
-            atom["data"]["default_sample_size"] = self.buf.ru32()
-            atom["data"]["default_sample_flags"] = self.buf.ru32()
+            atom["data"]["default-sample-description-index"] = self.buf.ru32()
+            atom["data"]["default-sample-duration"] = self.buf.ru32()
+            atom["data"]["default-sample-size"] = self.buf.ru32()
+            atom["data"]["default-sample-flags"] = self.buf.ru32()
         elif typ == "sidx":
             version = self.read_version(atom)
             atom["data"]["reference-id"] = self.buf.ru32()
-            atom["data"]["earliest_presentation_time"] = int.from_bytes(
+            atom["data"]["earliest-presentation-time"] = int.from_bytes(
                 self.buf.read(4 if version == 0 else 8), "big"
             )
             atom["data"]["first-offset"] = int.from_bytes(
@@ -468,49 +445,49 @@ class IsoModule(module.RuminantModule):
             self.read_version(atom)
             atom["data"]["sequence-number"] = self.buf.ru32()
         elif typ == "tfhd":
-            version = self.buf.ru8()
-            atom["data"]["version"] = version
-            flags = self.buf.ru24()
-            atom["data"]["flags"] = {
-                "raw": flags,
-                "base_data_offset_present": bool(flags & 1),
-                "sample_description_index_present": bool(flags & 2),
-                "default_sample_duration_present": bool(flags & 8),
-                "default_sample_size_present": bool(flags & 16),
-                "default_sample_flags_present": bool(flags & 32),
-                "no-samples": bool(flags & 65536),
-                "base_is_moof": bool(flags & 131072),
-            }
+            atom["data"]["version"] = self.buf.ru8()
+            atom["data"]["flags"] = utils.unpack_flags(
+                self.buf.ru24(),
+                (
+                    (0, "base-data-offset-present"),
+                    (1, "sample-description-index-present"),
+                    (3, "default-sample-duration-present"),
+                    (4, "default-sample-size-present"),
+                    (5, "default-sample-flags-present"),
+                    (16, "no-samples"),
+                    (17, "base-is-moof"),
+                ),
+            )
             atom["data"]["track-id"] = self.buf.ru32()
 
-            if atom["data"]["flags"]["base_data_offset_present"]:
-                atom["data"]["base_data_offset"] = self.buf.ru64()
-            if atom["data"]["flags"]["sample_description_index_present"]:
-                atom["data"]["sample_description_index"] = self.buf.ru32()
-            if atom["data"]["flags"]["default_sample_duration_present"]:
-                atom["data"]["default_sample_duration"] = self.buf.ru32()
-            if atom["data"]["flags"]["default_sample_size_present"]:
-                atom["data"]["default_sample_size"] = self.buf.ru32()
-            if atom["data"]["flags"]["default_sample_flags_present"]:
-                atom["data"]["default_sample_flags"] = self.buf.ru32()
+            if "base-data-offset-present" in atom["data"]["flags"]["names"]:
+                atom["data"]["base-data-offset"] = self.buf.ru64()
+            if "sample-description-index-present" in atom["data"]["flags"]["names"]:
+                atom["data"]["sample-description-index"] = self.buf.ru32()
+            if "default-sample-duration-present" in atom["data"]["flags"]["names"]:
+                atom["data"]["default-sample-duration"] = self.buf.ru32()
+            if "default-sample-size-present" in atom["data"]["flags"]["names"]:
+                atom["data"]["default-sample-size"] = self.buf.ru32()
+            if "default-sample-flags-present" in atom["data"]["flags"]["names"]:
+                atom["data"]["default-sample-flags"] = self.buf.ru32()
         elif typ == "tfdt":
             version = self.read_version(atom)
-            atom["data"]["baseMediaDecodeTime"] = int.from_bytes(
+            atom["data"]["base-media-decode-time"] = int.from_bytes(
                 self.buf.read(4 if version == 0 else 8), "big"
             )
         elif typ == "trun":
-            version = self.buf.ru8()
-            atom["data"]["version"] = version
-            flags = self.buf.ru24()
-            atom["data"]["flags"] = {
-                "raw": flags,
-                "data_offset_present": bool(flags & 1),
-                "first_sample_flags_present": bool(flags & 4),
-                "sample_duration_present": bool(flags & 256),
-                "sample_size_present": bool(flags & 512),
-                "sample_flags_present": bool(flags & 1024),
-                "sample_composition_time_offsets_present": bool(flags & 2048),
-            }
+            atom["data"]["version"] = self.buf.ru8()
+            atom["data"]["flags"] = utils.unpack_flags(
+                self.buf.ru24(),
+                (
+                    (0, "data-offset-present"),
+                    (2, "first-sample-flags-present"),
+                    (8, "sample-duration-present"),
+                    (9, "sample-size-present"),
+                    (10, "sample-flags-present"),
+                    (11, "sample-composition-time-offsets-present"),
+                ),
+            )
             atom["data"]["sample-count"] = self.buf.ru32()
         elif typ == "desc":
             atom["data"]["descriptor"] = self.buf.readunit().hex()
@@ -528,33 +505,29 @@ class IsoModule(module.RuminantModule):
             version = self.buf.ru8()
             atom["data"]["version"] = version
 
-            temp = self.buf.ru8()
-            atom["data"]["general_profile_space"] = (temp >> 6) & 0x03
-            atom["data"]["general_tier_flag"] = (temp >> 5) & 0x01
-            atom["data"]["general_profile_idc"] = temp & 0x1f
+            atom["data"]["general-profile-space"] = self.buf.rb(2)
+            atom["data"]["general-tier-flag"] = self.buf.rb(1)
+            atom["data"]["general-profile-idc"] = self.buf.rb(5)
 
-            atom["data"]["profile_compatibility_flags"] = self.buf.ru32()
-            atom["data"]["constraint_indicator_flags"] = int.from_bytes(
-                self.buf.read(6), "big"
-            )
+            atom["data"]["profile-compatibility-flags"] = self.buf.ru32()
+            atom["data"]["constraint-indicator-flags"] = self.buf.ru24()
             atom["data"]["level-idc"] = self.buf.ru8()
-            atom["data"]["min_spatial_segmentation_idc"] = self.buf.ru16()
-            atom["data"]["parallelismType"] = self.buf.ru8()
-            atom["data"]["chromaFormat"] = self.buf.ru8()
-            atom["data"]["bitDepthLumaMinus8"] = self.buf.ru8()
-            atom["data"]["bitDepthChromaMinus8"] = self.buf.ru8()
-            atom["data"]["avgFrameRate"] = self.buf.rfp16()
+            atom["data"]["min-spatial-segmentation-idc"] = self.buf.ru16()
+            atom["data"]["parallelism-type"] = self.buf.ru8()
+            atom["data"]["chroma-format"] = self.buf.ru8()
+            atom["data"]["bit-depth-luma-minus8"] = self.buf.ru8()
+            atom["data"]["bit-depth-chroma-minus8"] = self.buf.ru8()
+            atom["data"]["avg-frame-rate"] = self.buf.rfp16()
 
-            temp = self.buf.ru8()
-            atom["data"]["constantFrameRate"] = (temp >> 6) & 0x03
-            atom["data"]["numTemporalLayers"] = (temp >> 3) & 0x07
-            atom["data"]["temporalIdNested"] = (temp >> 2) & 0x01
-            atom["data"]["lengthSizeMinusOne"] = temp & 0x03
+            atom["data"]["constant-frame-rate"] = self.buf.rb(2)
+            atom["data"]["num-temporal-layers"] = self.buf.rb(3)
+            atom["data"]["temporal-id-nested"] = self.buf.rb(1)
+            atom["data"]["length-size-minus-one"] = self.buf.rb(2)
 
-            atom["data"]["numOfArrays"] = self.buf.ru8()
+            atom["data"]["arrays-count"] = self.buf.ru8()
 
             atom["data"]["arrays"] = []
-            for i in range(0, atom["data"]["numOfArrays"]):
+            for i in range(0, atom["data"]["array-count"]):
                 array = {}
                 array["array-completeness"] = self.buf.rb(1)
                 array["reserved"] = self.buf.rb(1)
@@ -570,17 +543,17 @@ class IsoModule(module.RuminantModule):
                     },
                     True,
                 )
-                array["numNalus"] = self.buf.ru16()
+                array["nalu-count"] = self.buf.ru16()
                 array["nalus"] = []
-                for j in range(0, array["numNalus"]):
+                for j in range(0, array["nalu-count"]):
                     entry = {}
-                    entry["nalUnitLength"] = self.buf.ru16()
+                    entry["nalu-length"] = self.buf.ru16()
 
-                    self.buf.pasunit(entry["nalUnitLength"])
+                    self.buf.pasunit(entry["nalu-length"])
 
-                    entry["nalUnit"] = {}
-                    entry["nalUnit"]["forbidden-zero-bit"] = self.buf.rb(1)
-                    entry["nalUnit"]["nal-unit-type"] = utils.unraw(
+                    entry["nalu"] = {}
+                    entry["nalu"]["forbidden-zero-bit"] = self.buf.rb(1)
+                    entry["nalu"]["nal-unit-type"] = utils.unraw(
                         self.buf.rb(6),
                         1,
                         {
@@ -592,10 +565,10 @@ class IsoModule(module.RuminantModule):
                         },
                         True,
                     )
-                    entry["nalUnit"]["nuh-layer-id"] = self.buf.rb(6)
-                    entry["nalUnit"]["nuh-temporal-id-plus-1"] = self.buf.rb(3)
+                    entry["nalu"]["nuh-layer-id"] = self.buf.rb(6)
+                    entry["nalu"]["nuh-temporal-id-plus-1"] = self.buf.rb(3)
 
-                    match entry["nalUnit"]["nal-unit-type"]:
+                    match entry["nalu"]["nal-unit-type"]:
                         case "Prefix SEI":
                             vals = []
                             for i in range(0, 2):
@@ -609,47 +582,45 @@ class IsoModule(module.RuminantModule):
 
                                 vals.append(val)
 
-                            entry["nalUnit"]["payload-type"] = utils.unraw(
+                            entry["nalu"]["payload-type"] = utils.unraw(
                                 vals[0],
                                 4,
                                 {
-                                    0x00: "buffering_period",
-                                    0x01: "pic_timing",
-                                    0x05: "user_data_unregistered",
-                                    0x89: "mastering_display_colour_volume",
-                                    0x90: "content_light_level_info",
+                                    0x00: "buffering-period",
+                                    0x01: "pic-timing",
+                                    0x05: "user-data-unregistered",
+                                    0x89: "mastering-display-colour-volume",
+                                    0x90: "content-light-level-info",
                                 },
                                 True,
                             )
-                            entry["nalUnit"]["payload-size"] = vals[1]
+                            entry["nalu"]["payload-size"] = vals[1]
 
-                            self.buf.pasunit(entry["nalUnit"]["payload-size"])
+                            self.buf.pasunit(entry["nalu"]["payload-size"])
 
-                            match entry["nalUnit"]["payload-type"]:
-                                case "user_data_unregistered":
+                            match entry["nalu"]["payload-type"]:
+                                case "user-data-unregistered":
                                     if (
                                         self.buf.ph(16)
                                         == "2ca2de09b51747dbbb55a4fe7fc2fc4e"
                                     ):
-                                        entry["nalUnit"]["libx265-uuid"] = (
-                                            self.buf.ruuid()
-                                        )
-                                        entry["nalUnit"]["libx265-string"] = (
-                                            self.buf.rs(self.buf.unit)
+                                        entry["nalu"]["libx265-uuid"] = self.buf.ruuid()
+                                        entry["nalu"]["libx265-string"] = self.buf.rs(
+                                            self.buf.unit
                                         )
                                     else:
-                                        entry["nalUnit"]["payload"] = self.buf.rh(
+                                        entry["nalu"]["payload"] = self.buf.rh(
                                             self.buf.unit
                                         )
                                 case _:
-                                    entry["nalUnit"]["payload"] = self.buf.rh(
+                                    entry["nalu"]["payload"] = self.buf.rh(
                                         self.buf.unit
                                     )
                                     entry["unknown"] = True
 
                             self.buf.sapunit()
                         case _:
-                            entry["nalUnit"]["payload"] = self.buf.rh(self.buf.unit)
+                            entry["nalu"]["payload"] = self.buf.rh(self.buf.unit)
                             entry["unknown"] = True
 
                     self.buf.sapunit()
@@ -677,30 +648,27 @@ class IsoModule(module.RuminantModule):
             atom["data"]["reserved1"] = self.buf.rh(2)
             atom["data"]["title"] = self.buf.readunit()[:-1].decode("latin-1")
         elif typ == "cslg":
-            atom["data"]["compositionToDTSShift"] = self.buf.ru32()
-            atom["data"]["leastDecodeToDisplayDelta"] = self.buf.ru32()
-            atom["data"]["greatestDecodeToDisplayDelta"] = self.buf.ru32()
-            atom["data"]["compositionStartTime"] = self.buf.ru32()
-            atom["data"]["compositionEndTime"] = self.buf.ru32()
+            atom["data"]["composition-to-dts-shift"] = self.buf.ru32()
+            atom["data"]["least-decode-to-display-delta"] = self.buf.ru32()
+            atom["data"]["greatest-decode-to-display-delta"] = self.buf.ru32()
+            atom["data"]["composition-start-time"] = self.buf.ru32()
+            atom["data"]["composition-end-time"] = self.buf.ru32()
         elif typ == "senc":
-            version = self.buf.ru8()
-            atom["data"]["version"] = version
-            flags = self.buf.ru24()
-            atom["data"]["flags"] = {
-                "raw": flags,
-                "use-subsample-encryption": bool(flags & 2),
-            }
+            atom["data"]["version"] = self.buf.ru8()
+            atom["data"]["flags"] = utils.unpack_flags(
+                self.buf.ru24(), ((1, "use-subsample-encryption"),)
+            )
             atom["data"]["sample-count"] = self.buf.ru32()
         elif typ == "frma":
             atom["data"]["original-media-type"] = self.buf.rs(4)
         elif typ == "schm":
-            version = self.buf.ru8()
-            atom["data"]["version"] = version
-            flags = self.buf.ru24()
-            atom["data"]["flags"] = {"raw": flags, "has-uri": bool(flags & 1)}
+            atom["data"]["version"] = self.buf.ru8()
+            atom["data"]["flags"] = utils.unpack_flags(
+                self.buf.ru24(), ((0, "has-uri"),)
+            )
             atom["data"]["type"] = self.buf.rs(4)
             atom["data"]["version"] = f"{self.buf.ru16()}.{self.buf.ru16()}"
-            if flags & 1:
+            if "has-uri" in atom["data"]["flags"]["names"]:
                 atom["data"]["uri"] = self.buf.readunit().decode("utf-8")
         elif typ == "tenc":
             version = self.read_version(atom)
