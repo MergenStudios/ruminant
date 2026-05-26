@@ -1541,10 +1541,6 @@ class IsoModule(module.RuminantModule):
 
         return streams
 
-    def read_sample(self, index, sample_to_offset, sample_sizes):
-        self.buf.seek(sample_to_offset[index])
-        return self.buf.read(sample_sizes[index])
-
     def process_stream(self, codec, sample_to_offset, sample_sizes):
         data = {}
 
@@ -1577,6 +1573,15 @@ class IsoModule(module.RuminantModule):
                 self.buf.seek(sample_to_offset[0])
                 with self.buf.sub(sample_sizes[0]):
                     data["first-sample"] = chew(self.buf)
+            case "av01":
+                self.buf.seek(sample_to_offset[0])
+                self.buf.pasunit(sample_sizes[0])
+
+                data["obus"] = []
+                while self.buf.unit > 0:
+                    data["obus"].append(self.read_av1_obu())
+
+                self.buf.sapunit()
             case _:
                 self.buf.seek(sample_to_offset[0])
                 with self.buf.sub(sample_sizes[0]):
@@ -1812,6 +1817,47 @@ class IsoModule(module.RuminantModule):
                 nal["unknown"] = True
 
         return nal
+
+    def read_av1_obu(self):
+        obu = {}
+        obu["forbidden-bit"] = self.buf.rb(1)
+        obu["type"] = utils.unraw(
+            self.buf.rb(4),
+            1,
+            {
+                0x01: "Sequence Header",
+                0x02: "Temporal Delimiter",
+                0x03: "Frame Header",
+                0x04: "Tile Group",
+                0x06: "Frame",
+                0x07: "Redundant Frame Header",
+                0x0b: "Metadata",
+            },
+            True,
+        )
+        obu["extension-flag"] = self.buf.rb(1)
+        obu["has-size-flag"] = self.buf.rb(1)
+        obu["reserved1"] = self.buf.rb(1)
+
+        if obu["extension-flag"]:
+            obu["temporal-id"] = self.buf.rb(3)
+            obu["spatial-id"] = self.buf.rb(2)
+            obu["reserved2"] = self.buf.rb(3)
+
+        if obu["has-size-flag"]:
+            length = self.buf.ruleb()
+        else:
+            length = (
+                self.buf.unit if self.buf.unit is not None else self.buf.available()
+            )
+
+        obu["length"] = length
+
+        self.buf.pasunit(length)
+
+        self.buf.sapunit()
+
+        return obu
 
 
 @module.register
