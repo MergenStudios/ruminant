@@ -524,7 +524,7 @@ class IsoModule(module.RuminantModule):
             atom["data"]["temporal-id-nested"] = self.buf.rb(1)
             atom["data"]["length-size-minus-one"] = self.buf.rb(2)
 
-            atom["data"]["arrays-count"] = self.buf.ru8()
+            atom["data"]["array-count"] = self.buf.ru8()
 
             atom["data"]["arrays"] = []
             for i in range(0, atom["data"]["array-count"]):
@@ -1569,7 +1569,7 @@ class IsoModule(module.RuminantModule):
                     data["first-sample-nals"].append(nalu)
 
                 self.buf.sapunit()
-            case "mp4a":
+            case "mp4a" | "mp4v":
                 self.buf.seek(sample_to_offset[0])
                 with self.buf.sub(sample_sizes[0]):
                     data["first-sample"] = chew(self.buf)
