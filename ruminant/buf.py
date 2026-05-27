@@ -609,9 +609,23 @@ class Buf(object):
 
         return self.rb(bits) - 1
 
-    def pue(self, count):
+    def pue(self):
         with self:
-            return self.rue(count)
+            return self.rue()
+
+    def riue(self):
+        value = 1
+
+        while self.rb(1) == 0:
+            value <<= 1
+            if self.rb(1) == 1:
+                value += 1
+
+        return value - 1
+
+    def piue(self):
+        with self:
+            return self.riue()
 
     def align(self):
         if self._bits != 0:

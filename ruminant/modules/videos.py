@@ -3260,3 +3260,190 @@ class DuckIvfModule(module.RuminantModule):
             self.buf.skip(self.buf.ru32l() + 8)
 
         return meta
+
+
+@module.register
+class DiracModule(module.RuminantModule):
+    dev = True
+    desc = "BBC Dirac data units."
+
+    def identify(buf, ctx):
+        return buf.peek(4) == b"BBCD"
+
+    def chew(self):
+        meta = {}
+        meta["type"] = "dirac"
+
+        meta["units"] = []
+        should_break = False
+        while not should_break:
+            unit = {}
+            self.buf.skip(4)
+
+            typ = self.buf.ru8()
+
+            if typ & 0b00001000:
+                unit["type"] = "picture"
+                unit["frame-flags"] = {
+                    "picture-syntax": ["dirac", "vc-2"][typ >> 7],
+                    "arithmetic-coding": bool(typ & 0x40),
+                    "reserved": (typ >> 5) & 0x01,
+                    "variant-profile-flag": bool(typ & 0x10),
+                    "picture-flag": bool(typ & 0x08),
+                    "num-refs": typ & 0x07,
+                }
+            else:
+                unit["type"] = utils.unraw(
+                    typ,
+                    1,
+                    {
+                        0x00: "sequence-header",
+                        0x20: "auxiliary-data",
+                        0x10: "end-of-sequence",
+                    },
+                    True,
+                )
+
+            unit["next-offset"] = self.buf.ru32()
+            unit["previous-offset"] = self.buf.ru32()
+
+            unit["data"] = {}
+            if unit["next-offset"] == 13:
+                should_break = True
+            else:
+                self.buf.pasunit(unit["next-offset"] - 13)
+
+                match unit["type"]:
+                    case "picture":
+                        unit["data"]["frame-counter"] = self.buf.ru32()
+                    case "auxiliary-data":
+                        unit["data"]["string"] = self.buf.rs(self.buf.unit)
+                    case "sequence-header":
+                        unit["data"]["parse-paramets"] = {}
+                        unit["data"]["parse-paramets"]["major-version"] = (
+                            self.buf.riue()
+                        )
+                        unit["data"]["parse-paramets"]["minor-version"] = (
+                            self.buf.riue()
+                        )
+                        unit["data"]["parse-paramets"]["profile"] = self.buf.riue()
+                        unit["data"]["parse-paramets"]["level"] = self.buf.riue()
+
+                        unit["data"]["base-video-format"] = utils.unraw(
+                            self.buf.riue(),
+                            1,
+                            {
+                                0x00: "Custom Format",
+                                0x01: "QSIF525",
+                                0x02: "QCIF",
+                                0x03: "SIF525",
+                                0x04: "CIF",
+                                0x05: "4SIF525",
+                                0x06: "4CIF",
+                                0x07: "SD 480I-60 (525 Line 59.94 Field/s Standard Definition)",
+                                0x08: "SD 576I-50 (625 Line 50 Field/s Standard Definition)",
+                                0x09: "HD 720P-60 (720 Line 59.94 Frame/s High Definition)",
+                                0x0a: "HD 720P-50 (720 Line 50 Frame/s High Definition)",
+                                0x0b: "HD 1080I-60 (1080 Line 60 Field/s High Definition)",
+                                0x0c: "HD 1080I-50 (1080 Line 50 Field/s High Definition)",
+                                0x0d: "HD 1080P-60 (1080 Line 59.94 Frame/s High Definition)",
+                                0x0e: "HD 1080P50 (1080 Line 50 Frame/s High Definition)",
+                                0x0f: "DC 2K-24 (2K D-Cinema, 24fps)",
+                                0x10: "DC 4K-24 (4K D-Cinema, 24fps)",
+                                0x11: "UHDTV 4K-60 (2160-line 59.94 Frame/s UHDTV)",
+                                0x12: "UHDTV 4K-50 (2160-line 50 Frame/s UHDTV)",
+                                0x13: "UHDTV 8K-60 (4320-line 59.94 Frame/s UHDTV)",
+                                0x14: "UHDTV 8K-50 (4320-line 50 Frame/s UHDTV)",
+                            },
+                            True,
+                        )
+
+                        unit["data"]["source-parameters"] = {}
+                        unit["data"]["source-parameters"]["custom-dimensions"] = (
+                            self.buf.rb(1)
+                        )
+                        if unit["data"]["source-parameters"]["custom-dimensions"]:
+                            unit["data"]["source-parameters"]["frame-width"] = (
+                                self.buf.riue()
+                            )
+                            unit["data"]["source-parameters"]["frame-height"] = (
+                                self.buf.riue()
+                            )
+                        unit["data"]["source-parameters"]["custom-chroma-sampling"] = (
+                            self.buf.rb(1)
+                        )
+                        if unit["data"]["source-parameters"]["custom-chroma-sampling"]:
+                            unit["data"]["source-parameters"]["chroma-format"] = (
+                                utils.unraw(
+                                    self.buf.riue(),
+                                    1,
+                                    {0x00: "4:4:4", 0x01: "4:2:2", 0x02: "4:2:0"},
+                                    True,
+                                )
+                            )
+                        unit["data"]["source-parameters"]["custom-scan-format"] = (
+                            self.buf.rb(1)
+                        )
+                        if unit["data"]["source-parameters"]["custom-scan-format"]:
+                            unit["data"]["source-parameters"]["scan-format"] = (
+                                utils.unraw(
+                                    self.buf.riue(),
+                                    1,
+                                    {0x00: "progressive", 0x01: "interlaced"},
+                                    True,
+                                )
+                            )
+                        unit["data"]["source-parameters"]["custom-frame-rate"] = (
+                            self.buf.rb(1)
+                        )
+                        if unit["data"]["source-parameters"]["custom-frame-rate"]:
+                            unit["data"]["source-parameters"]["frame-rate-index"] = (
+                                self.buf.riue()
+                            )
+                            if (
+                                unit["data"]["source-parameters"]["frame-rate-index"]
+                                == 0
+                            ):
+                                unit["data"]["source-parameters"]["frame-rate-num"] = (
+                                    self.buf.riue()
+                                )
+                                unit["data"]["source-parameters"][
+                                    "frame-rate-denom"
+                                ] = self.buf.riue()
+                            else:
+                                (
+                                    unit["data"]["source-parameters"]["frame-rate-num"],
+                                    unit["data"]["source-parameters"][
+                                        "frame-rate-denom"
+                                    ],
+                                ) = {
+                                    0x01: (24000, 1001),
+                                    0x02: (24, 1),
+                                    0x03: (25, 1),
+                                    0x04: (30000, 1001),
+                                    0x05: (30, 1),
+                                    0x06: (50, 1),
+                                    0x07: (60000, 1001),
+                                    0x08: (60, 1),
+                                    0x09: (15000, 1001),
+                                    0x0a: (25, 2),
+                                }.get(
+                                    unit["data"]["source-parameters"][
+                                        "frame-rate-index"
+                                    ],
+                                    (0, 1),
+                                )
+                            unit["data"]["source-parameters"]["frame-rate"] = (
+                                unit["data"]["source-parameters"]["frame-rate-num"]
+                                / unit["data"]["source-parameters"]["frame-rate-denom"]
+                            )
+
+                            # TODO: https://avpres.net/pub/dirac-spec-latest.pdf#subsubsection.10.3.2
+
+                        self.buf.align()
+
+                self.buf.sapunit()
+
+            meta["units"].append(unit)
+
+        return meta
