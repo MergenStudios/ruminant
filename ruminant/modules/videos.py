@@ -1809,6 +1809,11 @@ class IsoModule(module.RuminantModule):
                 if self.buf.peek(16).hex() == "dc45e9bde6d948b7962cd820d923eeef":
                     nal["uuid"] = self.buf.ruuid()
                     nal["libx264-banner"] = self.buf.rs(self.buf.unit)
+                elif self.buf.peek(16).hex() == "59948b2811ec45af967519d41feaa94d":
+                    nal["uuid"] = self.buf.ruuid()
+                    nal["h264-vaapi-banner"] = self.buf.rs(self.buf.unit)
+                else:
+                    nal["payload"] = self.buf.rh(self.buf.unit)
 
                 self.buf.sapunit()
             case _:
