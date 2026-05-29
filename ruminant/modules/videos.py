@@ -2730,6 +2730,54 @@ class AsfModule(module.RuminantModule):
                 obj["data"]["index-entry-time-interval"] = self.buf.ru64l()
                 obj["data"]["max-packet-count"] = self.buf.ru32l()
                 obj["data"]["index-entries-count"] = self.buf.ru32l()
+            case "c5f8cbea-5baf-4877-8467-aa8c44fa4cca":
+                obj["name"] = "Metadata Object"
+                obj["data"]["description-record-count"] = self.buf.ru16l()
+
+                obj["data"]["description-records"] = []
+                for i in range(0, obj["data"]["description-record-count"]):
+                    record = {}
+                    record["reserved"] = self.buf.ru16l()
+                    record["stream-number"] = self.buf.ru16l()
+                    record["name-length"] = self.buf.ru16l()
+                    record["data-type"] = utils.unraw(
+                        self.buf.ru16l(),
+                        2,
+                        {
+                            0x0000: "Unicode string",
+                            0x0001: "BYTE array",
+                            0x0002: "BOOL",
+                            0x0003: "DWORD",
+                            0x0004: "QWORD",
+                            0x0005: "WORD",
+                        },
+                        True,
+                    )
+                    record["data-length"] = self.buf.ru32l()
+                    record["name"] = self.buf.rs(record["name-length"], "utf-16")
+
+                    self.buf.pasunit(record["data-length"])
+
+                    match record["data-type"]:
+                        case "Unicode string":
+                            record["data"] = self.buf.rs(self.buf.unit, "utf-16")
+                        case "BYTE array":
+                            record["data"] = self.buf.rh(self.buf.unit)
+                        case "BOOL":
+                            record["data"] = bool(self.buf.ru16l())
+                        case "DWORD":
+                            record["data"] = self.buf.ru32l()
+                        case "QWORD":
+                            record["data"] = self.buf.ru64l()
+                        case "WORD":
+                            record["data"] = self.buf.ru16l()
+                        case _:
+                            record["data"] = self.buf.rh(self.buf.unit)
+                            record["unknown"] = True
+
+                    self.buf.sapunit()
+
+                    obj["data"]["description-records"].append(record)
             case _:
                 obj["unknown"] = True
 
