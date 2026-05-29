@@ -55,9 +55,7 @@ class Utf8Module(module.RuminantModule):
                         blob = None
                         for i in range(0, 4):
                             try:
-                                blob = chew(
-                                    base64.b64decode(content + "=" * i, validate=True)
-                                )
+                                blob = chew(base64.b64decode(content + "=" * i, validate=True))
                                 break
                             except base64.binascii.Error:
                                 pass
@@ -169,9 +167,7 @@ class AndroidXmlModule(module.RuminantModule):
 
                 chunk["data"]["strings"] = []
                 self.buf.skip(chunk["data"]["strings-start"] - 28)
-                encoding = (
-                    "utf8" if "UTF8" in chunk["data"]["flags"]["names"] else "utf16"
-                )
+                encoding = "utf8" if "UTF8" in chunk["data"]["flags"]["names"] else "utf16"
                 while self.buf.unit > 0:
                     chunk["data"]["strings"].append(
                         self.buf.rs(

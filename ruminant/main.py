@@ -56,16 +56,12 @@ def process(file, walk):
 
             with mm:
                 if slim:
-                    return json.dumps(
-                        modules.chew(mm), separators=(",", ":"), ensure_ascii=False
-                    )
+                    return json.dumps(modules.chew(mm), separators=(",", ":"), ensure_ascii=False)
                 else:
                     return json.dumps(modules.chew(mm), indent=2, ensure_ascii=False)
         else:
             if slim:
-                return json.dumps(
-                    modules.chew(file), separators=(",", ":"), ensure_ascii=False
-                )
+                return json.dumps(modules.chew(file), separators=(",", ":"), ensure_ascii=False)
             else:
                 return json.dumps(modules.chew(file), indent=2, ensure_ascii=False)
 
@@ -178,9 +174,7 @@ def main(dev=False):
 
     parser = argparse.ArgumentParser(description="Ruminant parser")
 
-    parser.add_argument(
-        "file", default="-", nargs="?", help="File to parse (default: -)"
-    )
+    parser.add_argument("file", default="-", nargs="?", help="File to parse (default: -)")
 
     parser.add_argument(
         "--extract",
@@ -214,9 +208,7 @@ def main(dev=False):
         help="Walk the file binwalk-style and look for parsable data",
     )
 
-    parser.add_argument(
-        "--extract-all", action="store_true", help="Extract all blobs to blobs/{id}.bin"
-    )
+    parser.add_argument("--extract-all", action="store_true", help="Extract all blobs to blobs/{id}.bin")
 
     parser.add_argument(
         "--filename-regex",
@@ -233,9 +225,7 @@ def main(dev=False):
 
     parser.add_argument("--self-test", action="store_true", help="Run self-tests")
 
-    parser.add_argument(
-        "--url", action="store_true", help="Treat file as URL and fetch it"
-    )
+    parser.add_argument("--url", action="store_true", help="Treat file as URL and fetch it")
 
     parser.add_argument(
         "--strip-url",
@@ -243,17 +233,11 @@ def main(dev=False):
         help="Strip metadata-removing parameters from known URLs like '?filetype=webp'",
     )
 
-    parser.add_argument(
-        "--shallow", action="store_true", help="Do not chew recovered blobs recursively"
-    )
+    parser.add_argument("--shallow", action="store_true", help="Do not chew recovered blobs recursively")
 
-    parser.add_argument(
-        "--slim", action="store_true", help="Output JSON without extra whitespace"
-    )
+    parser.add_argument("--slim", action="store_true", help="Output JSON without extra whitespace")
 
-    parser.add_argument(
-        "--version", "-v", action="store_true", help="Print version and exit"
-    )
+    parser.add_argument("--version", "-v", action="store_true", help="Print version and exit")
 
     # look for tqdm
     has_tqdm = True
@@ -264,9 +248,7 @@ def main(dev=False):
 
     if has_tqdm:
         # add tqdm specific options
-        parser.add_argument(
-            "--progress", "-p", action="store_true", help="Print progress"
-        )
+        parser.add_argument("--progress", "-p", action="store_true", help="Print progress")
 
         parser.add_argument(
             "--progress-names",
@@ -291,9 +273,7 @@ def main(dev=False):
         test_core.main()
 
     if args.print_modules:
-        print(
-            f"There are {len(module.modules)} currently registered module{'' if len(module.modules) == 1 else 's'}:"
-        )
+        print(f"There are {len(module.modules)} currently registered module{'' if len(module.modules) == 1 else 's'}:")
         for mod in module.modules:
             print(f"  * {mod.__name__}")
             if mod.desc != "":
@@ -357,9 +337,7 @@ def main(dev=False):
         else:
             user_agent = constants.USER_AGENT
 
-        req = urllib.request.Request(
-            urlunparse(url), headers={"User-Agent": user_agent}
-        )
+        req = urllib.request.Request(urlunparse(url), headers={"User-Agent": user_agent})
 
         # download to temproray file with name
         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
@@ -449,19 +427,12 @@ def main(dev=False):
                         if slim:
                             print(f'{{"path":{json.dumps(file)},"data":{{', end="")
                         else:
-                            print(
-                                f'    {{\n      "path": {json.dumps(file)},\n      "data": {{'
-                            )
+                            print(f'    {{\n      "path": {json.dumps(file)},\n      "data": {{')
 
                         if slim:
                             print(process(fd, args.walk)[1:-1], end="")
                         else:
-                            print(
-                                "\n".join([
-                                    "      " + x
-                                    for x in process(fd, args.walk).split("\n")[1:-1]
-                                ])
-                            )
+                            print("\n".join(["      " + x for x in process(fd, args.walk).split("\n")[1:-1]]))
 
                         if slim:
                             print("}}", end="")

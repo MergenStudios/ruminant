@@ -77,9 +77,7 @@ class Sqlite3Module(module.RuminantModule):
         meta["header"]["schema-format"] = self.buf.ru32()
         meta["header"]["default-page-cache-size"] = self.buf.ru32()
         meta["header"]["largest-broot-page"] = self.buf.ru32()
-        meta["header"]["encoding"] = utils.unraw(
-            self.buf.ru32(), 4, {1: "UTF-8", 2: "UTF-16le", 3: "UTF-16be"}
-        )
+        meta["header"]["encoding"] = utils.unraw(self.buf.ru32(), 4, {1: "UTF-8", 2: "UTF-16le", 3: "UTF-16be"})
         meta["header"]["user-version"] = self.buf.ru32()
         meta["header"]["incremental-vaccum-mode"] = self.buf.ru32()
         meta["header"]["application-id"] = self.buf.ru32()
@@ -217,9 +215,7 @@ class McaModule(module.RuminantModule):
 
                 with self.buf:
                     self.buf.seek(0x1000 + i * 4)
-                    chunk["timestamp"] = datetime.datetime.fromtimestamp(
-                        self.buf.ru32(), datetime.timezone.utc
-                    ).isoformat()
+                    chunk["timestamp"] = datetime.datetime.fromtimestamp(self.buf.ru32(), datetime.timezone.utc).isoformat()
 
                     self.buf.seek(offset)
                     chunk["length"] = self.buf.ru32()
@@ -297,9 +293,7 @@ class BlendModule(module.RuminantModule):
         meta = {}
         meta["type"] = "blend"
         self.buf.skip(7)
-        meta["mode"] = {"_v": "le32", "_V": "be32", "-v": "le64", "-V": "be64"}[
-            self.buf.rs(2)
-        ]
+        meta["mode"] = {"_v": "le32", "_V": "be32", "-v": "le64", "-V": "be64"}[self.buf.rs(2)]
         self.mode = meta["mode"]
         meta["version"] = int(self.buf.rs(3))
 
@@ -329,10 +323,7 @@ class BlendModule(module.RuminantModule):
                             match section["name"]:
                                 case "NAME" | "TYPE":
                                     section["data"]["count"] = self.r32()
-                                    section["data"]["strings"] = [
-                                        self.buf.rzs()
-                                        for i in range(0, section["data"]["count"])
-                                    ]
+                                    section["data"]["strings"] = [self.buf.rzs() for i in range(0, section["data"]["count"])]
                                 case "TLEN":
                                     count = 0
                                     for s in block["data"]["sections"]:
@@ -340,9 +331,7 @@ class BlendModule(module.RuminantModule):
                                             count = len(s["data"]["strings"])
                                             break
 
-                                    section["data"]["sizes"] = [
-                                        self.r16() for i in range(0, count)
-                                    ]
+                                    section["data"]["sizes"] = [self.r16() for i in range(0, count)]
                                 case _:
                                     section["unknown"] = True
                                     self.buf.skip(self.buf.available())
@@ -427,9 +416,7 @@ class GitModule(module.RuminantModule):
                         "value": " ".join(line[1:]),
                     })
 
-                meta["data"]["commit-message"] = (
-                    self.buf.rs(self.buf.unit).strip().split("\n")
-                )
+                meta["data"]["commit-message"] = self.buf.rs(self.buf.unit).strip().split("\n")
 
                 for header in meta["data"]["header"]:
                     match header["key"]:
@@ -440,9 +427,7 @@ class GitModule(module.RuminantModule):
                             line = header["value"].split(" ")
                             header["parsed"]["name"] = " ".join(line[:-3])
                             header["parsed"]["email"] = line[-3][1:-1]
-                            header["parsed"]["timestamp"] = utils.unix_to_date(
-                                int(line[-2])
-                            )
+                            header["parsed"]["timestamp"] = utils.unix_to_date(int(line[-2]))
                             header["parsed"]["timezone"] = line[-1]
 
         self.buf.sapunit()
@@ -455,10 +440,7 @@ class OpenTimestampsProofModule(module.RuminantModule):
     desc = "OpenTimestamps Proof files."
 
     def identify(buf, ctx):
-        return (
-            buf.peek(31)
-            == b"\x00OpenTimestamps\x00\x00Proof\x00\xbf\x89\xe2\xe8\x84\xe8\x92\x94"
-        )
+        return buf.peek(31) == b"\x00OpenTimestamps\x00\x00Proof\x00\xbf\x89\xe2\xe8\x84\xe8\x92\x94"
 
     def read_op(self):
         op = {}
@@ -548,9 +530,7 @@ class OpenTimestampsProofModule(module.RuminantModule):
         match meta["version"]:
             case 0x01:
                 meta["file-hash-op"] = self.read_op()
-                meta["file-hash"] = self.buf.rh(
-                    {"sha256": 32}[meta["file-hash-op"]["type"]]
-                )
+                meta["file-hash"] = self.buf.rh({"sha256": 32}[meta["file-hash-op"]["type"]])
                 meta["timestamp"] = self.read_ops()
             case _:
                 meta["unknown"] = True
@@ -683,14 +663,9 @@ class JavaSerializationData(module.RuminantModule):
 
                 obj["data"]["classdata"] = {}
                 if "SERIALIZABLE" in obj["data"]["classdesc"]["data"]["flags"]["names"]:
-                    self.read_classdesc_data(
-                        obj["data"]["classdesc"], obj["data"]["classdata"]
-                    )
+                    self.read_classdesc_data(obj["data"]["classdesc"], obj["data"]["classdata"])
 
-                    if (
-                        "WRITE_METHOD"
-                        in obj["data"]["classdesc"]["data"]["flags"]["names"]
-                    ):
+                    if "WRITE_METHOD" in obj["data"]["classdesc"]["data"]["flags"]["names"]:
                         obj["data"]["object-annotation"] = []
                         while True:
                             obj2 = self.read_element()
@@ -699,27 +674,17 @@ class JavaSerializationData(module.RuminantModule):
 
                             obj["data"]["object-annotation"].append(obj2)
                 elif (
-                    "EXTERNALIZABLE"
-                    in obj["data"]["classdesc"]["data"]["flags"]["names"]
-                    and "BLOCK_DATA"
-                    not in obj["data"]["classdesc"]["data"]["flags"]["names"]
+                    "EXTERNALIZABLE" in obj["data"]["classdesc"]["data"]["flags"]["names"]
+                    and "BLOCK_DATA" not in obj["data"]["classdesc"]["data"]["flags"]["names"]
                 ):
-                    raise ValueError(
-                        f"Invalid state for flags: {obj['data']['flags']['names']}"
-                    )
+                    raise ValueError(f"Invalid state for flags: {obj['data']['flags']['names']}")
                 elif (
-                    "EXTERNALIZABLE"
-                    in obj["data"]["classdesc"]["data"]["flags"]["names"]
-                    and "BLOCK_DATA"
-                    in obj["data"]["classdesc"]["data"]["flags"]["names"]
+                    "EXTERNALIZABLE" in obj["data"]["classdesc"]["data"]["flags"]["names"]
+                    and "BLOCK_DATA" in obj["data"]["classdesc"]["data"]["flags"]["names"]
                 ):
-                    raise ValueError(
-                        f"Invalid state for flags: {obj['data']['flags']['names']}"
-                    )
+                    raise ValueError(f"Invalid state for flags: {obj['data']['flags']['names']}")
                 else:
-                    raise ValueError(
-                        "Invalid state for flags: {obj['data']['classdesc']['data']['flags']['names']}"
-                    )
+                    raise ValueError("Invalid state for flags: {obj['data']['classdesc']['data']['flags']['names']}")
 
             case 0x74:
                 obj["type"] = "string"
@@ -879,12 +844,8 @@ class GgufModule(module.RuminantModule):
         self.buf.skip(4)
         self.little = bool(self.buf.pu32l() & 0xffff)
         meta["header"]["version"] = self.buf.ru32l() if self.little else self.buf.ru32()
-        meta["header"]["tensor-count"] = (
-            self.buf.ru64l() if self.little else self.buf.ru64()
-        )
-        meta["header"]["metadata-count"] = (
-            self.buf.ru64l() if self.little else self.buf.ru64()
-        )
+        meta["header"]["tensor-count"] = self.buf.ru64l() if self.little else self.buf.ru64()
+        meta["header"]["metadata-count"] = self.buf.ru64l() if self.little else self.buf.ru64()
 
         alignment = 32
         meta["metadata"] = []
@@ -904,12 +865,9 @@ class GgufModule(module.RuminantModule):
         for i in range(0, meta["header"]["tensor-count"]):
             tensor = {}
             tensor["name"] = self.rs()
-            tensor["dimension-count"] = (
-                self.buf.ru32l() if self.little else self.buf.ru32()
-            )
+            tensor["dimension-count"] = self.buf.ru32l() if self.little else self.buf.ru32()
             tensor["dimensions"] = [
-                (self.buf.ru64l() if self.little else self.buf.ru64())
-                for j in range(0, tensor["dimension-count"])
+                (self.buf.ru64l() if self.little else self.buf.ru64()) for j in range(0, tensor["dimension-count"])
             ]
             tensor["type"] = utils.unraw(
                 self.buf.ru32l() if self.little else self.buf.ru32(),
@@ -1200,9 +1158,7 @@ class AcpiModule(module.RuminantModule):
                 op["values"] = self.buf.rh(
                     max(
                         0,
-                        min(
-                            op["size"]["value"], op["length"] - (self.buf.tell() - pos)
-                        ),
+                        min(op["size"]["value"], op["length"] - (self.buf.tell() - pos)),
                     )
                 )
             case 0x14:
@@ -1390,9 +1346,7 @@ class AcpiModule(module.RuminantModule):
                 meta["data"]["counter-size"] = self.buf.rb(1)
                 meta["data"]["reserved1"] = self.buf.rb(1)
                 meta["data"]["legacy-replacement"] = self.buf.rb(1)
-                meta["data"]["pci-vendor-id"] = utils.unraw(
-                    self.buf.ru16l(), 2, constants.PCI_VENDORS, True
-                )
+                meta["data"]["pci-vendor-id"] = utils.unraw(self.buf.ru16l(), 2, constants.PCI_VENDORS, True)
                 meta["data"]["address"] = self.read_address()
                 meta["data"]["hpet-number"] = self.buf.ru8()
                 meta["data"]["minimum-tick"] = self.buf.ru16l()
@@ -1400,13 +1354,9 @@ class AcpiModule(module.RuminantModule):
             case "BGRT":
                 meta["data"]["version"] = self.buf.ru16l()
                 meta["data"]["reserved"] = self.buf.rb(5)
-                meta["data"]["orientation-degrees"] = ["0", "90", "180", "270"][
-                    self.buf.rb(2)
-                ]
+                meta["data"]["orientation-degrees"] = ["0", "90", "180", "270"][self.buf.rb(2)]
                 meta["data"]["displayed"] = bool(self.buf.rb(1))
-                meta["data"]["image-type"] = (
-                    utils.unraw(self.buf.ru8(), 1, {0x00: "Bitmap"}, True),
-                )
+                meta["data"]["image-type"] = (utils.unraw(self.buf.ru8(), 1, {0x00: "Bitmap"}, True),)
                 meta["data"]["address"] = ("0x" + hex(self.buf.ru64l())[2:].zfill(16),)
                 meta["data"]["x-offset"] = self.buf.ru32l()
                 meta["data"]["y-offset"] = self.buf.ru32l()
@@ -1452,9 +1402,7 @@ class BplistModule(module.RuminantModule):
             case "dict":
                 value = {}
                 for entry in obj["value"]:
-                    value[self.rebuild(objs[entry["key"]], objs)] = self.rebuild(
-                        objs[entry["value"]], objs
-                    )
+                    value[self.rebuild(objs[entry["key"]], objs)] = self.rebuild(objs[entry["value"]], objs)
 
                 return value
             case "array":
@@ -1478,15 +1426,8 @@ class BplistModule(module.RuminantModule):
 
         objects = []
         for i in range(0, meta["trailer"]["object-count"]):
-            self.buf.seek(
-                meta["trailer"]["offset-table-offset"]
-                + meta["trailer"]["offset-table-size"] * i
-            )
-            self.buf.seek(
-                int.from_bytes(
-                    self.buf.read(meta["trailer"]["offset-table-size"]), "big"
-                )
-            )
+            self.buf.seek(meta["trailer"]["offset-table-offset"] + meta["trailer"]["offset-table-size"] * i)
+            self.buf.seek(int.from_bytes(self.buf.read(meta["trailer"]["offset-table-size"]), "big"))
 
             obj = {}
             obj["offset"] = self.buf.tell() - 8
@@ -1499,16 +1440,12 @@ class BplistModule(module.RuminantModule):
                         0b1000: "false",
                         0b1001: "true",
                         0b1111: "fill",
-                    }.get(
-                        op & 0x0f, f"Unknown simple (0b{bin(op & 0x0f)[2:].zfill(4)})"
-                    )
+                    }.get(op & 0x0f, f"Unknown simple (0b{bin(op & 0x0f)[2:].zfill(4)})")
                     obj["value"] = {0b1000: False, 0b1001: True}.get(op & 0x0f)
                 case 0b0001:
                     obj["type"] = "int"
                     obj["size"] = self.read_size(op)
-                    obj["value"] = int.from_bytes(
-                        self.buf.read(2 ** obj["size"]), "big"
-                    )
+                    obj["value"] = int.from_bytes(self.buf.read(2 ** obj["size"]), "big")
                 case 0b0010:
                     obj["type"] = "real"
                     obj["size"] = self.read_size(op)
@@ -1525,10 +1462,7 @@ class BplistModule(module.RuminantModule):
                     obj["type"] = "date"
                     val = self.buf.rf64()
                     obj["value"] = (
-                        utils.unix_to_date(int(val) + 978307200)[:-6]
-                        + "."
-                        + str(val).split(".")[1].zfill(6)[:6]
-                        + "+00:00"
+                        utils.unix_to_date(int(val) + 978307200)[:-6] + "." + str(val).split(".")[1].zfill(6)[:6] + "+00:00"
                     )
                 case 0b0100:
                     obj["type"] = "data"
@@ -1584,9 +1518,7 @@ class BplistModule(module.RuminantModule):
             objects.append(obj)
 
         meta["objects"] = objects
-        meta["root"] = self.rebuild(
-            objects[meta["trailer"]["top-object-offset"]], objects
-        )
+        meta["root"] = self.rebuild(objects[meta["trailer"]["top-object-offset"]], objects)
 
         self.buf.seek(self.buf.size())
 

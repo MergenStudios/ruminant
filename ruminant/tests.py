@@ -742,9 +742,7 @@ def aes_128_decrypt():
 
 @test("Cryptography", "AES 192-bit encrypt")
 def aes_192_encrypt():
-    cipher = crypto.AES(
-        bytes.fromhex("8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b")
-    )
+    cipher = crypto.AES(bytes.fromhex("8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b"))
     assert_eq(
         cipher.encrypt(bytes.fromhex("6bc1bee22e409f96e93d7e117393172a")).hex(),
         "bd334f1d6e45f25ff712a214571fa5cc",
@@ -765,9 +763,7 @@ def aes_192_encrypt():
 
 @test("Cryptography", "AES 192-bit decrypt")
 def aes_192_decrypt():
-    cipher = crypto.AES(
-        bytes.fromhex("8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b")
-    )
+    cipher = crypto.AES(bytes.fromhex("8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b"))
     assert_eq(
         cipher.decrypt(bytes.fromhex("bd334f1d6e45f25ff712a214571fa5cc")).hex(),
         "6bc1bee22e409f96e93d7e117393172a",
@@ -788,11 +784,7 @@ def aes_192_decrypt():
 
 @test("Cryptography", "AES 256-bit encrypt")
 def aes_256_encrypt():
-    cipher = crypto.AES(
-        bytes.fromhex(
-            "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"
-        )
-    )
+    cipher = crypto.AES(bytes.fromhex("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"))
     assert_eq(
         cipher.encrypt(bytes.fromhex("6bc1bee22e409f96e93d7e117393172a")).hex(),
         "f3eed1bdb5d2a03c064b5a7e3db181f8",
@@ -813,11 +805,7 @@ def aes_256_encrypt():
 
 @test("Cryptography", "AES 256-bit decrypt")
 def aes_256_decrypt():
-    cipher = crypto.AES(
-        bytes.fromhex(
-            "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"
-        )
-    )
+    cipher = crypto.AES(bytes.fromhex("603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"))
     assert_eq(
         cipher.decrypt(bytes.fromhex("f3eed1bdb5d2a03c064b5a7e3db181f8")).hex(),
         "6bc1bee22e409f96e93d7e117393172a",
@@ -905,9 +893,7 @@ def chacha20_poly1305():
             bytes.fromhex(
                 "d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d63dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b3692ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc3ff4def08e4b7a9de576d26586cec64b6116"
             ),
-            bytes.fromhex(
-                "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f"
-            ),
+            bytes.fromhex("808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f"),
             bytes.fromhex("070000004041424344454647"),
             bytes.fromhex("1ae10b594f09e26a7e902ecbd0600691"),
             aad=bytes.fromhex("50515253c0c1c2c3c4c5c6c7"),

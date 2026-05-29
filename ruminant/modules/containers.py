@@ -111,9 +111,7 @@ class ZipModule(module.RuminantModule):
                     signer["signed-data"]["certificates"] = []
                     self.buf.pasunit(self.buf.ru32l())
                     while self.buf.unit > 0:
-                        signer["signed-data"]["certificates"].append(
-                            utils.read_der(Buf(self.buf.read(self.buf.ru32l())))
-                        )
+                        signer["signed-data"]["certificates"].append(utils.read_der(Buf(self.buf.read(self.buf.ru32l()))))
 
                     # certificates
                     self.buf.sapunit()
@@ -136,13 +134,9 @@ class ZipModule(module.RuminantModule):
                         match key:
                             case 0xbeeff00d:
                                 attribute["key"] = "Stripping Protection"
-                                attribute["value"]["signed-with-version"] = (
-                                    self.buf.ru32l()
-                                )
+                                attribute["value"]["signed-with-version"] = self.buf.ru32l()
                             case _:
-                                attribute["key"] = (
-                                    f"Unknown (0x{hex(key)[2:].zfill(8)})"
-                                )
+                                attribute["key"] = f"Unknown (0x{hex(key)[2:].zfill(8)})"
                                 attribute["value"]["hex"] = self.buf.rh(self.buf.unit)
 
                         self.buf.sapunit()
@@ -160,9 +154,7 @@ class ZipModule(module.RuminantModule):
 
                     signer["signatures"] = self.read_signature_sequence()
 
-                    signer["public-key"] = utils.read_der(
-                        Buf(self.buf.read(self.buf.ru32l()))
-                    )
+                    signer["public-key"] = utils.read_der(Buf(self.buf.read(self.buf.ru32l())))
 
                     # signer
                     self.buf.sapunit()
@@ -218,9 +210,7 @@ class ZipModule(module.RuminantModule):
 
                             ntry["payload"]["entries"] = []
                             while self.buf.unit > 0:
-                                ntry["payload"]["entries"].append(
-                                    self.read_attribute(True)
-                                )
+                                ntry["payload"]["entries"].append(self.read_attribute(True))
 
                             self.buf.sapunit()
                         case 3:
@@ -308,9 +298,7 @@ class ZipModule(module.RuminantModule):
                 "pkzip-version": f"{(temp & 0xff) // 10}.{(temp & 0xff) % 10}",
             }
             temp = self.buf.ru16l()
-            file["meta"]["version-needed"] = (
-                f"{(temp & 0xff) // 10}.{(temp & 0xff) % 10}"
-            )
+            file["meta"]["version-needed"] = f"{(temp & 0xff) // 10}.{(temp & 0xff) % 10}"
             file["meta"]["general-flags"] = utils.unpack_flags(
                 self.buf.ru16l(),
                 (
@@ -325,9 +313,7 @@ class ZipModule(module.RuminantModule):
                     (9, "local header values masked"),
                 ),
             )
-            file["meta"]["compression-method"] = utils.unraw(
-                self.buf.ru16l(), 2, constants.ZIP_COMPRESSION_ALGORITHMS, True
-            )
+            file["meta"]["compression-method"] = utils.unraw(self.buf.ru16l(), 2, constants.ZIP_COMPRESSION_ALGORITHMS, True)
             file["meta"]["modification-time"] = self.buf.ru16l()
             file["meta"]["modification-date"] = self.buf.ru16l()
             file["meta"]["modification-timestamp"] = self.to_timestamp(
@@ -340,9 +326,7 @@ class ZipModule(module.RuminantModule):
             extra_field_length = self.buf.ru16l()
             comment_length = self.buf.ru16l()
             file["meta"]["start-disk"] = self.buf.ru16l()
-            file["meta"]["internal-attributes"] = utils.unpack_flags(
-                self.buf.ru16l(), ((0, "text file"),)
-            )
+            file["meta"]["internal-attributes"] = utils.unpack_flags(self.buf.ru16l(), ((0, "text file"),))
             file["meta"]["external-attributes"] = {
                 "dos-attributes": self.buf.ru16l(),
             }
@@ -396,9 +380,7 @@ class ZipModule(module.RuminantModule):
                         ),
                     )
                 case _:
-                    file["meta"]["external-attributes"]["platform-attributes"] = (
-                        self.buf.ru16l()
-                    )
+                    file["meta"]["external-attributes"]["platform-attributes"] = self.buf.ru16l()
 
             file["offset"] = self.buf.ru32l()
             file["filename"] = self.buf.rs(filename_length)
@@ -422,9 +404,7 @@ class ZipModule(module.RuminantModule):
                         entry["payload"]["entries"] = []
                         while self.buf.unit > 0:
                             tag = {}
-                            tag["type"] = utils.unraw(
-                                self.buf.ru16l(), 2, {0x0001: "File Times"}, True
-                            )
+                            tag["type"] = utils.unraw(self.buf.ru16l(), 2, {0x0001: "File Times"}, True)
                             tag["length"] = self.buf.ru16l()
                             tag["payload"] = {}
 
@@ -432,15 +412,9 @@ class ZipModule(module.RuminantModule):
 
                             match tag["type"]:
                                 case "File Times":
-                                    tag["payload"]["modification-time"] = (
-                                        utils.filetime_to_date(self.buf.ru64l())
-                                    )
-                                    tag["payload"]["access-time"] = (
-                                        utils.filetime_to_date(self.buf.ru64l())
-                                    )
-                                    tag["payload"]["creation-time"] = (
-                                        utils.filetime_to_date(self.buf.ru64l())
-                                    )
+                                    tag["payload"]["modification-time"] = utils.filetime_to_date(self.buf.ru64l())
+                                    tag["payload"]["access-time"] = utils.filetime_to_date(self.buf.ru64l())
+                                    tag["payload"]["creation-time"] = utils.filetime_to_date(self.buf.ru64l())
                                 case _:
                                     tag["unknown"] = True
 
@@ -450,26 +424,16 @@ class ZipModule(module.RuminantModule):
                         entry["type"] = "Extended Timestamp"
                         flags = self.buf.ru8()
                         if flags & 0x01 and self.buf.unit > 0:
-                            entry["payload"]["mtime"] = utils.unix_to_date(
-                                self.buf.ru32l()
-                            )
+                            entry["payload"]["mtime"] = utils.unix_to_date(self.buf.ru32l())
                         if flags & 0x02 and self.buf.unit > 0:
-                            entry["payload"]["ctime"] = utils.unix_to_date(
-                                self.buf.ru32l()
-                            )
+                            entry["payload"]["ctime"] = utils.unix_to_date(self.buf.ru32l())
                         if flags & 0x04 and self.buf.unit > 0:
-                            entry["payload"]["atime"] = utils.unix_to_date(
-                                self.buf.ru32l()
-                            )
+                            entry["payload"]["atime"] = utils.unix_to_date(self.buf.ru32l())
                     case 0x7875:
                         entry["type"] = "Unicode Path"
                         entry["payload"]["version"] = self.buf.ru8()
-                        entry["payload"]["uid"] = int.from_bytes(
-                            self.buf.read(self.buf.ru8()), "little"
-                        )
-                        entry["payload"]["gid"] = int.from_bytes(
-                            self.buf.read(self.buf.ru8()), "little"
-                        )
+                        entry["payload"]["uid"] = int.from_bytes(self.buf.read(self.buf.ru8()), "little")
+                        entry["payload"]["gid"] = int.from_bytes(self.buf.read(self.buf.ru8()), "little")
                     case 0x9901:
                         entry["type"] = "AES Extra Data Field"
                         entry["payload"]["version"] = self.buf.ru16l()
@@ -515,9 +479,7 @@ class ZipModule(module.RuminantModule):
                         if meta["key"] is None:
                             meta["key"] = {}
                             meta["key"]["name"] = self.buf.ph(12)
-                            meta["key"]["found"] = (
-                                secrets.get(meta["key"]["name"]) is not None
-                            )
+                            meta["key"]["found"] = secrets.get(meta["key"]["name"]) is not None
 
                         key = secrets.get(meta["key"]["name"])
                         if isinstance(key, str):
@@ -543,9 +505,7 @@ class ZipModule(module.RuminantModule):
                                 key[0] = self.crc32_update(key[0], c)
                                 key[1] = (key[1] + (key[0] & 0xff)) & 0xffffffff
                                 key[1] = (key[1] * 134775813 + 1) & 0xffffffff
-                                key[2] = self.crc32_update(
-                                    key[2], (key[1] >> 24) & 0xff
-                                )
+                                key[2] = self.crc32_update(key[2], (key[1] >> 24) & 0xff)
 
                             fd.seek(0)
                             fd = Buf(fd)
@@ -572,9 +532,7 @@ class ZipModule(module.RuminantModule):
                             case "Deflate":
                                 with self.buf.sub(file["meta"]["compressed-size"]):
                                     fd = tempfile.TemporaryFile()
-                                    utils.stream_deflate(
-                                        self.buf, fd, self.buf.available()
-                                    )
+                                    utils.stream_deflate(self.buf, fd, self.buf.available())
                                     fd.seek(0)
 
                                     file["data"] = chew(fd)
@@ -588,11 +546,7 @@ class ZipModule(module.RuminantModule):
 
                 self.buf.seek(meta["eocd"]["central-directory-offset"] - 24)
                 meta["apk-signature"]["trailer-length"] = self.buf.ru64l()
-                self.buf.seek(
-                    meta["eocd"]["central-directory-offset"]
-                    - 8
-                    - meta["apk-signature"]["trailer-length"]
-                )
+                self.buf.seek(meta["eocd"]["central-directory-offset"] - 8 - meta["apk-signature"]["trailer-length"])
 
                 self.buf.pasunit(meta["apk-signature"]["trailer-length"] - 16)
 
@@ -669,9 +623,7 @@ class RIFFModule(module.RuminantModule):
                     chunk["data"][field] = i
 
                 chunk["data"]["has-alpha"] = bool(tag & 1)
-                chunk["data"]["version"] = (
-                    ((tag >> 1) & 1) | (((tag >> 2) & 1) << 1) | (((tag >> 3) & 1) << 2)
-                )
+                chunk["data"]["version"] = ((tag >> 1) & 1) | (((tag >> 2) & 1) << 1) | (((tag >> 3) & 1) << 2)
             case "ANIM":
                 chunk["data"]["background-color"] = {
                     "red": self.buf.ru8(),
@@ -732,13 +684,9 @@ class RIFFModule(module.RuminantModule):
                 chunk["data"]["reserved"] = self.buf.rh(16)
 
                 chunk["data"]["derived"] = {}
-                chunk["data"]["derived"]["fps"] = (
-                    1000000 / chunk["data"]["microseconds-per-frame"]
-                )
+                chunk["data"]["derived"]["fps"] = 1000000 / chunk["data"]["microseconds-per-frame"]
                 chunk["data"]["derived"]["duration-in-seconds"] = (
-                    chunk["data"]["frame-count"]
-                    * chunk["data"]["microseconds-per-frame"]
-                    / 1000000
+                    chunk["data"]["frame-count"] * chunk["data"]["microseconds-per-frame"] / 1000000
                 )
             case "strh":
                 self.strh_type = self.buf.rs(4)
@@ -897,9 +845,7 @@ class RIFFModule(module.RuminantModule):
                 else:
                     self.buf.skip(190)
 
-                chunk["data"]["coding-history"] = utils.decode(
-                    self.buf.readunit()
-                ).rstrip("\x00")
+                chunk["data"]["coding-history"] = utils.decode(self.buf.readunit()).rstrip("\x00")
             case "iXML" | "_PMX":
                 chunk["data"]["xml"] = utils.xml_to_dict(self.buf.readunit())
             case "ID3 ":
@@ -929,20 +875,7 @@ class RIFFModule(module.RuminantModule):
             case "XMP " | "XMP":
                 with self.buf.subunit():
                     chunk["data"]["xmp"] = utils.xml_to_dict(self.buf.readunit())
-            case (
-                "ICMT"
-                | "ISFT"
-                | "INAM"
-                | "IART"
-                | "ICRD"
-                | "IARL"
-                | "ILNG"
-                | "IMED"
-                | "ISRC"
-                | "ISRF"
-                | "ITCH"
-                | "strn"
-            ):
+            case "ICMT" | "ISFT" | "INAM" | "IART" | "ICRD" | "IARL" | "ILNG" | "IMED" | "ISRC" | "ISRF" | "ITCH" | "strn":
                 chunk["data"]["text"] = utils.decode(self.buf.readunit()).rstrip("\x00")
             case "RIFF" | "LIST" | "FORM":
                 chunk["data"]["type"] = self.buf.rs(4)
@@ -986,9 +919,7 @@ class TarModule(module.RuminantModule):
         file_length = self.buf.rs(12).rstrip(" ").rstrip("\x00")
         meta["size"] = file_length
 
-        meta["modification-date"] = utils.unix_to_date(
-            int(self.buf.rs(12).rstrip(" ").rstrip("\x00"), 8)
-        )
+        meta["modification-date"] = utils.unix_to_date(int(self.buf.rs(12).rstrip(" ").rstrip("\x00"), 8))
         meta["checksum"] = self.buf.rs(8).rstrip(" ").rstrip("\x00")
         meta["file-type"] = utils.unraw(
             self.buf.ru8(),
@@ -1058,9 +989,7 @@ class ArModule(module.RuminantModule):
         while self.buf.available() >= 58:
             file = {}
             file["name"] = self.buf.rs(16).rstrip(" ")
-            file["modification-time"] = utils.unix_to_date(
-                int("0" + self.buf.rs(12).rstrip(" "))
-            )
+            file["modification-time"] = utils.unix_to_date(int("0" + self.buf.rs(12).rstrip(" ")))
             file["owner-id"] = int("0" + self.buf.rs(6).rstrip(" "))
             file["group-id"] = int("0" + self.buf.rs(6).rstrip(" "))
             file["mode"] = self.buf.rs(8).rstrip(" ")
@@ -1220,9 +1149,7 @@ class Uf2Module(module.RuminantModule):
             block["total-block-number"] = self.buf.ru32l()
 
             if "family-id-present" in block["flags"]["names"]:
-                block["family-id"] = utils.unraw(
-                    self.buf.ru32l(), 4, constants.UF2_FAMILY_IDS, True
-                )
+                block["family-id"] = utils.unraw(self.buf.ru32l(), 4, constants.UF2_FAMILY_IDS, True)
             elif "file-container" in block["flags"]["names"]:
                 block["file-size"] = self.buf.ru32l()
             else:
@@ -1313,9 +1240,7 @@ class Uf2Module(module.RuminantModule):
             meta["ranges"][k] = {}
 
             for k2, v2 in v.items():
-                meta["ranges"][k][
-                    f"0x{hex(k2[0])[2:].zfill(8)}-0x{hex(k2[1])[2:].zfill(8)}"
-                ] = chew(Buf(v2), blob_mode=True)
+                meta["ranges"][k][f"0x{hex(k2[0])[2:].zfill(8)}-0x{hex(k2[1])[2:].zfill(8)}"] = chew(Buf(v2), blob_mode=True)
 
         return meta
 
@@ -1349,11 +1274,9 @@ class DvdMpegSequenceModule(module.RuminantModule):
             pack["stuffing"] = self.buf.rh(pack["stuffing-length"])
 
             i = pack["scr"]
-            pack["scr"] = (
-                ((i >> 43) & 7) << 30
-                | ((i >> 27) & 0x7fff) << 15
-                | ((i >> 11) & 0x7fff)
-            ) * 300 + ((i >> 1) & 0x01ff)
+            pack["scr"] = (((i >> 43) & 7) << 30 | ((i >> 27) & 0x7fff) << 15 | ((i >> 11) & 0x7fff)) * 300 + (
+                (i >> 1) & 0x01ff
+            )
 
             self.buf.sapunit()
             meta["packs"].append(pack)
@@ -1438,21 +1361,11 @@ class AndroidBackupModule(module.RuminantModule):
 
         if meta["encryption"] == "AES-256":
             meta["encryption-parameters"] = {}
-            meta["encryption-parameters"]["salt"] = bytes.fromhex(
-                self.buf.rl().decode("utf-8")
-            ).hex()
-            meta["encryption-parameters"]["checksum-salt"] = bytes.fromhex(
-                self.buf.rl().decode("utf-8")
-            ).hex()
-            meta["encryption-parameters"]["pbkdf2-rounds"] = int(
-                self.buf.rl().decode("utf-8")
-            )
-            meta["encryption-parameters"]["iv"] = bytes.fromhex(
-                self.buf.rl().decode("utf-8")
-            ).hex()
-            meta["encryption-parameters"]["master-key"] = base64.b64decode(
-                self.buf.rl()
-            ).hex()
+            meta["encryption-parameters"]["salt"] = bytes.fromhex(self.buf.rl().decode("utf-8")).hex()
+            meta["encryption-parameters"]["checksum-salt"] = bytes.fromhex(self.buf.rl().decode("utf-8")).hex()
+            meta["encryption-parameters"]["pbkdf2-rounds"] = int(self.buf.rl().decode("utf-8"))
+            meta["encryption-parameters"]["iv"] = bytes.fromhex(self.buf.rl().decode("utf-8")).hex()
+            meta["encryption-parameters"]["master-key"] = base64.b64decode(self.buf.rl()).hex()
         else:
             fd = utils.tempfd()
             d = zlib.decompressobj(wbits=15)
@@ -1513,9 +1426,7 @@ class CabinetModule(module.RuminantModule):
             meta["header"]["reserve-size"] = self.buf.ru16l()
             meta["header"]["folder-reserve-size"] = self.buf.ru8()
             meta["header"]["data-reserve-size"] = self.buf.ru8()
-            meta["header"]["reserved"] = self.buf.rh(
-                meta["header"]["data-reserve-size"]
-            )
+            meta["header"]["reserved"] = self.buf.rh(meta["header"]["data-reserve-size"])
 
         if "PREV_CABINET" in meta["header"]["flags"]["names"]:
             meta["header"]["previous-cabinet"] = self.buf.rzs()
@@ -1558,9 +1469,7 @@ class CabinetModule(module.RuminantModule):
                     folder["uncompressed-size"] += segment["uncompressed-size"]
 
                     if "RESERVE_PRESENT" in meta["header"]["flags"]["names"]:
-                        segment["reserve"] = self.buf.rh(
-                            meta["header"]["data-reserve-size"]
-                        )
+                        segment["reserve"] = self.buf.rh(meta["header"]["data-reserve-size"])
 
                     fd.write(self.buf.read(segment["compressed-size"]))
 
@@ -1574,12 +1483,8 @@ class CabinetModule(module.RuminantModule):
                             fd2 = utils.tempfd()
 
                             while fd.available() > 0:
-                                assert fd.read(2) == b"CK", (
-                                    "invalid MSZIP chunk padding"
-                                )
-                                utils.stream_deflate(
-                                    fd, fd2, fd.available(), revert=True
-                                )
+                                assert fd.read(2) == b"CK", "invalid MSZIP chunk padding"
+                                utils.stream_deflate(fd, fd2, fd.available(), revert=True)
 
                             fd.close()
                             fd = Buf(fd2)
@@ -1730,9 +1635,7 @@ class IwaModule(module.RuminantModule):
 
         for buf in bufs:
             buf = Buf(buf)
-            protobuf = utils.read_protobuf(
-                buf, buf.ruleb(), decode=constants.IWORK_PROTO
-            )
+            protobuf = utils.read_protobuf(buf, buf.ruleb(), decode=constants.IWORK_PROTO)
 
             with buf.sub(buf.available()):
                 content = chew(buf)
@@ -1796,9 +1699,7 @@ class PcapNgModule(module.RuminantModule):
             packet["type"] = "DNS"
             packet["transaction-id"] = self.buf.ru16()
             packet["direction"] = ["question", "reply"][self.buf.rb(1)]
-            packet["opcode"] = utils.unraw(
-                self.buf.rb(4), 1, {0x00: "QUERY", 0x01: "IQUERY", 0x02: "STATUS"}, True
-            )
+            packet["opcode"] = utils.unraw(self.buf.rb(4), 1, {0x00: "QUERY", 0x01: "IQUERY", 0x02: "STATUS"}, True)
             packet["authoriative-answer"] = bool(self.buf.rb(1))
             packet["truncation"] = bool(self.buf.rb(1))
             packet["recursion-desired"] = bool(self.buf.rb(1))
@@ -1835,9 +1736,7 @@ class PcapNgModule(module.RuminantModule):
                 record = {}
                 record["name"] = dns_read_name(base, length)
 
-                record["type"] = utils.unraw(
-                    self.buf.ru16(), 2, constants.DNS_RECORD_TYPES, True
-                )
+                record["type"] = utils.unraw(self.buf.ru16(), 2, constants.DNS_RECORD_TYPES, True)
                 record["class"] = utils.unraw(
                     self.buf.ru16(),
                     2,
@@ -1861,9 +1760,7 @@ class PcapNgModule(module.RuminantModule):
                     record = {}
                     record["name"] = dns_read_name(base, length)
 
-                    record["type"] = utils.unraw(
-                        self.buf.ru16(), 2, constants.DNS_RECORD_TYPES, True
-                    )
+                    record["type"] = utils.unraw(self.buf.ru16(), 2, constants.DNS_RECORD_TYPES, True)
 
                     match record["type"]:
                         case "A":
@@ -1879,18 +1776,14 @@ class PcapNgModule(module.RuminantModule):
                             self.buf.pasunit(record["rdata-length"])
 
                             record["rdata"] = {}
-                            record["rdata"]["ip"] = ".".join([
-                                str(self.buf.ru8()) for k in range(0, 4)
-                            ])
+                            record["rdata"]["ip"] = ".".join([str(self.buf.ru8()) for k in range(0, 4)])
 
                             self.buf.sapunit()
                         case "OPT":
                             record["udp-payload-size"] = self.buf.ru16()
                             record["extended-rcode"] = self.buf.ru8()
                             record["edns0-version"] = self.buf.ru8()
-                            record["flags"] = utils.unpack_flags(
-                                self.buf.ru16(), ((15, "DO"),)
-                            )
+                            record["flags"] = utils.unpack_flags(self.buf.ru16(), ((15, "DO"),))
 
                             record["rdata-length"] = self.buf.ru16()
 
@@ -1913,9 +1806,7 @@ class PcapNgModule(module.RuminantModule):
 
                                 match opt["code"]:
                                     case "COOKIE":
-                                        opt["data"]["cookie"] = self.buf.rh(
-                                            self.buf.unit
-                                        )
+                                        opt["data"]["cookie"] = self.buf.rh(self.buf.unit)
                                     case "Extended DNS Error":
                                         opt["data"]["info-code"] = utils.unraw(
                                             self.buf.ru16(),
@@ -1952,13 +1843,9 @@ class PcapNgModule(module.RuminantModule):
                                             },
                                             True,
                                         )
-                                        opt["data"]["extra-text"] = self.buf.rs(
-                                            self.buf.unit
-                                        )
+                                        opt["data"]["extra-text"] = self.buf.rs(self.buf.unit)
                                     case _:
-                                        opt["data"]["payload"] = self.buf.rh(
-                                            self.buf.unit
-                                        )
+                                        opt["data"]["payload"] = self.buf.rh(self.buf.unit)
 
                                 self.buf.sapunit()
 
@@ -1999,9 +1886,7 @@ class PcapNgModule(module.RuminantModule):
                             self.buf.pasunit(record["rdata-length"])
 
                             record["rdata"] = {}
-                            record["rdata"]["address"] = ipaddress.IPv6Address(
-                                self.buf.read(16)
-                            ).compressed
+                            record["rdata"]["address"] = ipaddress.IPv6Address(self.buf.read(16)).compressed
 
                             self.buf.sapunit()
                         case "MX":
@@ -2050,9 +1935,7 @@ class PcapNgModule(module.RuminantModule):
                             self.buf.pasunit(record["rdata-length"])
 
                             record["rdata"] = {}
-                            record["rdata"]["flags"] = utils.unpack_flags(
-                                self.buf.ru8(), ((0, "issuer-critical"),)
-                            )
+                            record["rdata"]["flags"] = utils.unpack_flags(self.buf.ru8(), ((0, "issuer-critical"),))
                             record["rdata"]["tag"] = self.buf.rs(self.buf.ru8())
                             record["rdata"]["value"] = self.buf.rs(self.buf.unit)
 
@@ -2073,13 +1956,9 @@ class PcapNgModule(module.RuminantModule):
                             key_tag = 0
                             with self.buf:
                                 for j in range(0, self.buf.unit):
-                                    key_tag += (
-                                        self.buf.ru8() if j % 2 else self.buf.ru8() << 8
-                                    )
+                                    key_tag += self.buf.ru8() if j % 2 else self.buf.ru8() << 8
 
-                                key_tag = (
-                                    (key_tag & 0xffff) + (key_tag >> 16)
-                                ) & 0xffff
+                                key_tag = ((key_tag & 0xffff) + (key_tag >> 16)) & 0xffff
 
                             record["rdata"] = {}
                             temp = self.buf.ru16()
@@ -2092,9 +1971,7 @@ class PcapNgModule(module.RuminantModule):
                                 ),
                             )
                             if "key-signing-key" in record["rdata"]["flags"]["names"]:
-                                record["rdata"]["flags"]["key-signing-key"] = (
-                                    temp & 0b1111111001111110
-                                )
+                                record["rdata"]["flags"]["key-signing-key"] = temp & 0b1111111001111110
 
                             record["rdata"]["protocol"] = self.buf.ru8()
                             match record["rdata"]["protocol"]:
@@ -2125,24 +2002,14 @@ class PcapNgModule(module.RuminantModule):
                             self.buf.pasunit(record["rdata-length"])
 
                             record["rdata"] = {}
-                            record["rdata"]["type-covered"] = utils.unraw(
-                                self.buf.ru16(), 2, constants.DNS_RECORD_TYPES, True
-                            )
-                            record["rdata"]["algorithm"] = utils.unraw(
-                                self.buf.ru8(), 1, constants.DNSSEC_ALGORITHMS, True
-                            )
+                            record["rdata"]["type-covered"] = utils.unraw(self.buf.ru16(), 2, constants.DNS_RECORD_TYPES, True)
+                            record["rdata"]["algorithm"] = utils.unraw(self.buf.ru8(), 1, constants.DNSSEC_ALGORITHMS, True)
                             record["rdata"]["labels"] = self.buf.ru8()
                             record["rdata"]["original-ttl"] = self.buf.ru32()
-                            record["rdata"]["signature-expiration"] = (
-                                utils.unix_to_date(self.buf.ru32())
-                            )
-                            record["rdata"]["signature-inception"] = utils.unix_to_date(
-                                self.buf.ru32()
-                            )
+                            record["rdata"]["signature-expiration"] = utils.unix_to_date(self.buf.ru32())
+                            record["rdata"]["signature-inception"] = utils.unix_to_date(self.buf.ru32())
                             record["rdata"]["key-tag"] = self.buf.ru16()
-                            record["rdata"]["signers-name"] = dns_read_name(
-                                base, length
-                            )
+                            record["rdata"]["signers-name"] = dns_read_name(base, length)
                             record["rdata"]["signature"] = self.buf.rh(self.buf.unit)
 
                             self.buf.sapunit()
@@ -2187,9 +2054,7 @@ class PcapNgModule(module.RuminantModule):
                                     case "alpn":
                                         param["value"] = []
                                         while self.buf.unit > 0:
-                                            param["value"].append(
-                                                self.buf.rs(self.buf.ru8())
-                                            )
+                                            param["value"].append(self.buf.rs(self.buf.ru8()))
                                     case _:
                                         param["value"] = self.buf.rh(param["length"])
                                         param["unknown"] = True
@@ -2293,12 +2158,8 @@ class PcapNgModule(module.RuminantModule):
 
                             record["rdata"] = {}
                             record["rdata"]["key-tag"] = self.buf.ru16()
-                            record["rdata"]["algorithm"] = utils.unraw(
-                                self.buf.ru8(), 1, constants.DNSSEC_ALGORITHMS, True
-                            )
-                            record["rdata"]["digest-type"] = utils.unraw(
-                                self.buf.ru8(), 1, constants.DNSSEC_DIGESTS, True
-                            )
+                            record["rdata"]["algorithm"] = utils.unraw(self.buf.ru8(), 1, constants.DNSSEC_ALGORITHMS, True)
+                            record["rdata"]["digest-type"] = utils.unraw(self.buf.ru8(), 1, constants.DNSSEC_DIGESTS, True)
                             record["rdata"]["digest"] = self.buf.rh(self.buf.unit)
 
                             self.buf.sapunit()
@@ -2315,21 +2176,13 @@ class PcapNgModule(module.RuminantModule):
                             self.buf.pasunit(record["rdata-length"])
 
                             record["rdata"] = {}
-                            record["rdata"]["hash-algorithm"] = utils.unraw(
-                                self.buf.ru8(), 1, constants.DNSSEC_DIGESTS, True
-                            )
-                            record["rdata"]["flags"] = utils.unpack_flags(
-                                self.buf.ru8(), ((0, "opt-out"),)
-                            )
+                            record["rdata"]["hash-algorithm"] = utils.unraw(self.buf.ru8(), 1, constants.DNSSEC_DIGESTS, True)
+                            record["rdata"]["flags"] = utils.unpack_flags(self.buf.ru8(), ((0, "opt-out"),))
                             record["rdata"]["iterations"] = self.buf.ru16()
                             record["rdata"]["salt-length"] = self.buf.ru8()
-                            record["rdata"]["salt"] = self.buf.rh(
-                                record["rdata"]["salt-length"]
-                            )
+                            record["rdata"]["salt"] = self.buf.rh(record["rdata"]["salt-length"])
                             record["rdata"]["hash-length"] = self.buf.ru8()
-                            record["rdata"]["next-hashed-owner-name"] = self.buf.rh(
-                                record["rdata"]["hash-length"]
-                            )
+                            record["rdata"]["next-hashed-owner-name"] = self.buf.rh(record["rdata"]["hash-length"])
 
                             record["rdata"]["type-bitmaps"] = []
                             while self.buf.unit > 0:
@@ -2343,8 +2196,7 @@ class PcapNgModule(module.RuminantModule):
                             record["rdata"]["types"] = []
                             for entry in record["rdata"]["type-bitmaps"]:
                                 bits = int(
-                                    entry["bitmap"]
-                                    + "00" * (32 - entry["bitmap-length"]),
+                                    entry["bitmap"] + "00" * (32 - entry["bitmap-length"]),
                                     16,
                                 )
 
@@ -2366,9 +2218,7 @@ class PcapNgModule(module.RuminantModule):
                             record["rdata"] = self.buf.rh(record["rdata-length"])
                             record["unknown"] = True
 
-                    packet[["answers", "authority-rrs", "additional-rrs"][i]].append(
-                        record
-                    )
+                    packet[["answers", "authority-rrs", "additional-rrs"][i]].append(record)
 
             return packet
 
@@ -2437,10 +2287,7 @@ class PcapNgModule(module.RuminantModule):
                     }
                 case (
                     "Interface Statistics",
-                    "Start time"
-                    | "End time"
-                    | "Interface received"
-                    | "Interface dropped",
+                    "Start time" | "End time" | "Interface received" | "Interface dropped",
                 ):
                     opt["data"] = self.buf.ru32l() if self.little else self.buf.ru32()
                 case _:
@@ -2485,9 +2332,7 @@ class PcapNgModule(module.RuminantModule):
         )
         packet["checksum"] = self.buf.ru16()
         packet["source-address"] = ".".join([str(self.buf.ru8()) for i in range(0, 4)])
-        packet["destination-address"] = ".".join([
-            str(self.buf.ru8()) for i in range(0, 4)
-        ])
+        packet["destination-address"] = ".".join([str(self.buf.ru8()) for i in range(0, 4)])
         packet["options"] = self.buf.rh(self.buf.unit)
 
         self.buf.sapunit()
@@ -2637,8 +2482,7 @@ class PcapNgModule(module.RuminantModule):
                     self.buf.skip(1)
                 case "Selective ACKnowledgement (SACK)":
                     opt["ranges"] = [
-                        {"start": self.buf.ru32(), "end": self.buf.ru32()}
-                        for i in range(0, (self.buf.ru8() - 2) // 8)
+                        {"start": self.buf.ru32(), "end": self.buf.ru32()} for i in range(0, (self.buf.ru8() - 2) // 8)
                     ]
                 case "Timestamp and echo of previous timestamp":
                     self.buf.skip(1)
@@ -2721,9 +2565,7 @@ class PcapNgModule(module.RuminantModule):
         packet["next-header"] = self.buf.ru8()
         packet["hop-limit"] = self.buf.ru8()
         packet["source-address"] = ipaddress.IPv6Address(self.buf.read(16)).compressed
-        packet["destination-address"] = ipaddress.IPv6Address(
-            self.buf.read(16)
-        ).compressed
+        packet["destination-address"] = ipaddress.IPv6Address(self.buf.read(16)).compressed
 
         next_type = packet["next-header"]
         packet["headers"] = []
@@ -2852,9 +2694,7 @@ class PcapNgModule(module.RuminantModule):
                 "Router Advertisement": {0x00: "Router Advertisement"},
                 "Neighbor Solicitation": {0x00: "Neighbor Solicitation"},
                 "Neighbor Advertisement": {0x00: "Neighbor Advertisement"},
-                "Multicast Listener Reports v2": {
-                    0x00: "Multicast Listener Reports v2"
-                },
+                "Multicast Listener Reports v2": {0x00: "Multicast Listener Reports v2"},
             }.get(packet["type"], {}),
             True,
         )
@@ -2867,17 +2707,13 @@ class PcapNgModule(module.RuminantModule):
                 packet["payload"] = self.buf.rh(self.buf.unit)
             case "Neighbor Solicitation", "Neighbor Solicitation":
                 packet["reserved"] = self.buf.ru32()
-                packet["target-address"] = ipaddress.IPv6Address(
-                    self.buf.read(16)
-                ).compressed
+                packet["target-address"] = ipaddress.IPv6Address(self.buf.read(16)).compressed
             case "Neighbor Advertisement", "Neighbor Advertisement":
                 packet["router"] = bool(self.buf.rb(1))
                 packet["solicited"] = bool(self.buf.rb(1))
                 packet["override"] = bool(self.buf.rb(1))
                 packet["reserved"] = self.buf.rb(29)
-                packet["target-address"] = ipaddress.IPv6Address(
-                    self.buf.read(16)
-                ).compressed
+                packet["target-address"] = ipaddress.IPv6Address(self.buf.read(16)).compressed
             case "Router Advertisement", "Router Advertisement":
                 packet["hop-limit"] = self.buf.ru8()
                 packet["managed-address-configuration"] = bool(self.buf.rb(1))
@@ -2907,12 +2743,9 @@ class PcapNgModule(module.RuminantModule):
                     )
                     mcast["auxiliar-data-length"] = self.buf.ru8()
                     mcast["source-count"] = self.buf.ru16()
-                    mcast["multicast-address"] = ipaddress.IPv6Address(
-                        self.buf.read(16)
-                    ).compressed
+                    mcast["multicast-address"] = ipaddress.IPv6Address(self.buf.read(16)).compressed
                     mcast["sources"] = [
-                        ipaddress.IPv6Address(self.buf.read(16)).compressed
-                        for j in range(0, mcast["source-count"])
+                        ipaddress.IPv6Address(self.buf.read(16)).compressed for j in range(0, mcast["source-count"])
                     ]
                     mcast["auxiliar-data"] = self.buf.rh(mcast["auxiliar-data-length"])
 
@@ -2968,9 +2801,7 @@ class PcapNgModule(module.RuminantModule):
                         opt["valid-lifetime"] = self.buf.ru32()
                         opt["preferred-lifetime"] = self.buf.ru32()
                         opt["reserved2"] = self.buf.ru32()
-                        opt["prefix"] = ipaddress.IPv6Address(
-                            self.buf.read(16)
-                        ).compressed
+                        opt["prefix"] = ipaddress.IPv6Address(self.buf.read(16)).compressed
                     case "Advertisement Interval":
                         opt["reserved"] = self.buf.ru16()
                         opt["advertisement-interval"] = self.buf.ru32()
@@ -2980,9 +2811,7 @@ class PcapNgModule(module.RuminantModule):
 
                         opt["addresses"] = []
                         while self.buf.unit >= 16:
-                            opt["addresses"].append(
-                                ipaddress.IPv6Address(self.buf.read(16)).compressed
-                            )
+                            opt["addresses"].append(ipaddress.IPv6Address(self.buf.read(16)).compressed)
                     case "Nonce":
                         opt["nonce"] = self.buf.rh(self.buf.unit)
                     case _:
@@ -3074,9 +2903,7 @@ class PcapNgModule(module.RuminantModule):
                         (9, "S-VLAN component"),
                         (10, "Two-port MAC Relay component"),
                     )
-                    tlv["value"]["capabilities"] = utils.unpack_flags(
-                        self.buf.ru16(), bits
-                    )
+                    tlv["value"]["capabilities"] = utils.unpack_flags(self.buf.ru16(), bits)
                     tlv["value"]["enabled"] = utils.unpack_flags(self.buf.ru16(), bits)
                 case "Management address":
                     tlv["value"]["management-address-length"] = self.buf.ru8()
@@ -3092,21 +2919,13 @@ class PcapNgModule(module.RuminantModule):
 
                     match tlv["value"]["management-address-subtype"]:
                         case "IPv4":
-                            tlv["value"]["management-address"] = ".".join([
-                                str(self.buf.ru8()) for i in range(0, 4)
-                            ])
+                            tlv["value"]["management-address"] = ".".join([str(self.buf.ru8()) for i in range(0, 4)])
                         case "IPv6":
-                            tlv["value"]["management-address"] = ipaddress.IPv6Address(
-                                self.buf.read(16)
-                            ).compressed
+                            tlv["value"]["management-address"] = ipaddress.IPv6Address(self.buf.read(16)).compressed
                         case "MAC":
-                            tlv["value"]["management-address"] = ":".join([
-                                self.buf.rh(1) for i in range(0, 6)
-                            ])
+                            tlv["value"]["management-address"] = ":".join([self.buf.rh(1) for i in range(0, 6)])
                         case _:
-                            tlv["value"]["management-address"] = self.buf.rh(
-                                self.buf.unit
-                            )
+                            tlv["value"]["management-address"] = self.buf.rh(self.buf.unit)
                             tlv["value"]["unknown"] = True
 
                     self.buf.sapunit()
@@ -3183,29 +3002,17 @@ class PcapNgModule(module.RuminantModule):
             },
             True,
         )
-        packet["protocol-type"] = utils.unraw(
-            self.buf.ru16(), 2, {0x0800: "IPv4", 0x86dd: "IPv6"}, True
-        )
+        packet["protocol-type"] = utils.unraw(self.buf.ru16(), 2, {0x0800: "IPv4", 0x86dd: "IPv6"}, True)
         packet["hardware-length"] = self.buf.ru8()
         packet["protocol-length"] = self.buf.ru8()
-        packet["operation"] = utils.unraw(
-            self.buf.ru16(), 2, {0x00: "Reserved", 0x01: "Request", 0x02: "Reply"}, True
-        )
+        packet["operation"] = utils.unraw(self.buf.ru16(), 2, {0x00: "Reserved", 0x01: "Request", 0x02: "Reply"}, True)
 
         match packet["operation"]:
             case "Request" | "Reply":
-                packet["sender-hardware-address"] = self.buf.rh(
-                    packet["hardware-length"]
-                )
-                packet["sender-protocol-address"] = self.buf.rh(
-                    packet["protocol-length"]
-                )
-                packet["target-hardware-address"] = self.buf.rh(
-                    packet["hardware-length"]
-                )
-                packet["target-protocol-address"] = self.buf.rh(
-                    packet["protocol-length"]
-                )
+                packet["sender-hardware-address"] = self.buf.rh(packet["hardware-length"])
+                packet["sender-protocol-address"] = self.buf.rh(packet["protocol-length"])
+                packet["target-hardware-address"] = self.buf.rh(packet["hardware-length"])
+                packet["target-protocol-address"] = self.buf.rh(packet["protocol-length"])
             case _:
                 packet["unknown"] = True
 
@@ -3230,9 +3037,7 @@ class PcapNgModule(module.RuminantModule):
             case "Membership Query":
                 packet["maximum-response-time"] = self.buf.ru8()
                 packet["checksum"] = self.buf.ru16()
-                packet["group-address"] = ".".join([
-                    str(self.buf.ru8()) for i in range(0, 4)
-                ])
+                packet["group-address"] = ".".join([str(self.buf.ru8()) for i in range(0, 4)])
 
                 if self.buf.unit >= 4:
                     packet["reserved"] = self.buf.rb(4)
@@ -3241,8 +3046,7 @@ class PcapNgModule(module.RuminantModule):
                     packet["qqic"] = self.buf.ru8()
                     packet["sources-count"] = self.buf.ru16()
                     packet["sources"] = [
-                        ".".join([str(self.buf.ru8()) for i in range(0, 4)])
-                        for j in range(0, packet["sources-count"])
+                        ".".join([str(self.buf.ru8()) for i in range(0, 4)]) for j in range(0, packet["sources-count"])
                     ]
 
                 packet["aux-data"] = self.buf.rh(self.buf.unit)
@@ -3270,12 +3074,9 @@ class PcapNgModule(module.RuminantModule):
                     )
                     record["aux-data-length"] = self.buf.ru8()
                     record["sources-count"] = self.buf.ru16()
-                    record["multicast-address"] = ".".join([
-                        str(self.buf.ru8()) for i in range(0, 4)
-                    ])
+                    record["multicast-address"] = ".".join([str(self.buf.ru8()) for i in range(0, 4)])
                     record["sources"] = [
-                        ".".join([str(self.buf.ru8()) for i in range(0, 4)])
-                        for j in range(0, record["sources-count"])
+                        ".".join([str(self.buf.ru8()) for i in range(0, 4)]) for j in range(0, record["sources-count"])
                     ]
                     packet["aux-data"] = self.buf.rh(record["aux-data-length"])
 
@@ -3306,11 +3107,7 @@ class PcapNgModule(module.RuminantModule):
         for part in parts:
             span.add(part["offset"], part["length"])
 
-        if not (
-            len(span.ranges) == 1
-            and span.ranges[0][0] == 0
-            and span.ranges[0][1] == length
-        ):
+        if not (len(span.ranges) == 1 and span.ranges[0][0] == 0 and span.ranges[0][1] == length):
             return
 
         packet = bytearray(length)
@@ -3357,9 +3154,7 @@ class PcapNgModule(module.RuminantModule):
             self.buf.seek(self.buf.tell() - 8)
 
             section["header"] = {}
-            section["header"]["length"] = (
-                self.buf.ru32l() if self.little else self.buf.ru32()
-            )
+            section["header"]["length"] = self.buf.ru32l() if self.little else self.buf.ru32()
             self.buf.pasunit(section["header"]["length"] - 8)
 
             section["header"]["little-endian"] = self.buf.ru32l() == 0x1a2b3c4d
@@ -3374,9 +3169,7 @@ class PcapNgModule(module.RuminantModule):
 
             section["header"]["options"] = self.read_options("Section Header")
 
-            section["header"]["trailer-length"] = (
-                self.buf.ru32l() if self.little else self.buf.ru32()
-            )
+            section["header"]["trailer-length"] = self.buf.ru32l() if self.little else self.buf.ru32()
 
             self.buf.sapunit()
 
@@ -3614,55 +3407,35 @@ class PcapNgModule(module.RuminantModule):
                             True,
                         )
                         block["data"]["reserved"] = self.buf.rh(2)
-                        block["data"]["snap-length"] = (
-                            self.buf.ru32l() if self.little else self.buf.ru32()
-                        )
+                        block["data"]["snap-length"] = self.buf.ru32l() if self.little else self.buf.ru32()
 
                         interfaces[len(interfaces)] = block["data"]["link-type"]
                     case "Enhanced Packet":
                         block["data"]["id"] = self.id
                         self.id += 1
 
-                        block["data"]["interface-id"] = (
-                            self.buf.ru32l() if self.little else self.buf.ru32()
-                        )
+                        block["data"]["interface-id"] = self.buf.ru32l() if self.little else self.buf.ru32()
                         temp = self.buf.ru32l() if self.little else self.buf.ru32()
-                        block["data"]["timestamp"] = (temp << 32) | (
-                            self.buf.ru32l() if self.little else self.buf.ru32()
-                        )
-                        block["data"]["captured-packet-length"] = (
-                            self.buf.ru32l() if self.little else self.buf.ru32()
-                        )
-                        block["data"]["original-packet-length"] = (
-                            self.buf.ru32l() if self.little else self.buf.ru32()
-                        )
+                        block["data"]["timestamp"] = (temp << 32) | (self.buf.ru32l() if self.little else self.buf.ru32())
+                        block["data"]["captured-packet-length"] = self.buf.ru32l() if self.little else self.buf.ru32()
+                        block["data"]["original-packet-length"] = self.buf.ru32l() if self.little else self.buf.ru32()
 
                         self.buf.pasunit(block["data"]["captured-packet-length"])
 
                         match interfaces[block["data"]["interface-id"]]:
                             case "ETHERNET":
                                 block["data"]["packet"] = {}
-                                block["data"]["packet"]["destination-mac"] = ":".join([
-                                    self.buf.rh(1) for i in range(0, 6)
-                                ])
-                                block["data"]["packet"]["source-mac"] = ":".join([
-                                    self.buf.rh(1) for i in range(0, 6)
-                                ])
+                                block["data"]["packet"]["destination-mac"] = ":".join([self.buf.rh(1) for i in range(0, 6)])
+                                block["data"]["packet"]["source-mac"] = ":".join([self.buf.rh(1) for i in range(0, 6)])
 
                                 temp = self.buf.ru16()
 
                                 if temp <= 1500:
                                     block["data"]["packet"]["length"] = temp
-                                    block["data"]["packet"][
-                                        "destination-service-access-point"
-                                    ] = self.buf.ru8()
-                                    block["data"]["packet"][
-                                        "source-service-access-point"
-                                    ] = self.buf.ru8()
+                                    block["data"]["packet"]["destination-service-access-point"] = self.buf.ru8()
+                                    block["data"]["packet"]["source-service-access-point"] = self.buf.ru8()
                                     block["data"]["packet"]["ctrl"] = self.buf.ru8()
-                                    block["data"]["packet"]["data"] = self.buf.rh(
-                                        self.buf.unit
-                                    )
+                                    block["data"]["packet"]["data"] = self.buf.rh(self.buf.unit)
                                 else:
                                     block["data"]["packet"]["ethertype"] = utils.unraw(
                                         temp,
@@ -3682,36 +3455,22 @@ class PcapNgModule(module.RuminantModule):
                                     try:
                                         match block["data"]["packet"]["ethertype"]:
                                             case "IPv4":
-                                                block["data"]["packet"]["payload"] = (
-                                                    self.read_ipv4()
-                                                )
+                                                block["data"]["packet"]["payload"] = self.read_ipv4()
                                             case "IPv6":
-                                                block["data"]["packet"]["payload"] = (
-                                                    self.read_ipv6()
-                                                )
+                                                block["data"]["packet"]["payload"] = self.read_ipv6()
                                             case "LLDP":
-                                                block["data"]["packet"]["payload"] = (
-                                                    self.read_lldp()
-                                                )
+                                                block["data"]["packet"]["payload"] = self.read_lldp()
                                             case "ARP":
-                                                block["data"]["packet"]["payload"] = (
-                                                    self.read_arp()
-                                                )
+                                                block["data"]["packet"]["payload"] = self.read_arp()
                                             case _:
-                                                block["data"]["packet"]["payload"] = (
-                                                    self.buf.rh(self.buf.unit)
-                                                )
+                                                block["data"]["packet"]["payload"] = self.buf.rh(self.buf.unit)
 
-                                                if block["data"]["packet"][
-                                                    "ethertype"
-                                                ] not in (
+                                                if block["data"]["packet"]["ethertype"] not in (
                                                     "Unknown (0x88e1)",
                                                     "Unknown (0x8912)",
                                                     "Unknown (0x22e3)",
                                                 ):
-                                                    block["data"]["packet"][
-                                                        "unknown"
-                                                    ] = True
+                                                    block["data"]["packet"]["unknown"] = True
                                     except Exception as e:
                                         if module.debug:
                                             raise e
@@ -3721,19 +3480,13 @@ class PcapNgModule(module.RuminantModule):
 
                                     self.buf.sapunit()
                             case _:
-                                block["data"]["packet"] = self.buf.rh(
-                                    block["data"]["captured-packet-length"]
-                                )
+                                block["data"]["packet"] = self.buf.rh(block["data"]["captured-packet-length"])
 
                         self.buf.sapunit()
                     case "Interface Statistics":
-                        block["data"]["interface-id"] = (
-                            self.buf.ru32l() if self.little else self.buf.ru32()
-                        )
+                        block["data"]["interface-id"] = self.buf.ru32l() if self.little else self.buf.ru32()
                         temp = self.buf.ru32l() if self.little else self.buf.ru32()
-                        block["data"]["timestamp"] = (temp << 32) | (
-                            self.buf.ru32l() if self.little else self.buf.ru32()
-                        )
+                        block["data"]["timestamp"] = (temp << 32) | (self.buf.ru32l() if self.little else self.buf.ru32())
                     case _:
                         block["unknown"] = True
 
@@ -3742,9 +3495,7 @@ class PcapNgModule(module.RuminantModule):
 
                 if "unknown" not in block:
                     block["options"] = self.read_options(block["type"])
-                    block["trailer-length"] = (
-                        self.buf.ru32l() if self.little else self.buf.ru32()
-                    )
+                    block["trailer-length"] = self.buf.ru32l() if self.little else self.buf.ru32()
 
                 self.buf.sapunit()
                 section["blocks"].append(block)
@@ -3975,9 +3726,7 @@ class NcchModule(module.RuminantModule):
         meta["header"]["flags"] = {
             "reserved": self.buf.rh(3),
             "crypto-method": self.buf.ru8(),
-            "content-platform": utils.unraw(
-                self.buf.ru8(), 1, {0x01: "CTR", 0x02: "New 3DS/Snake"}, True
-            ),
+            "content-platform": utils.unraw(self.buf.ru8(), 1, {0x01: "CTR", 0x02: "New 3DS/Snake"}, True),
             "content-type": utils.unraw(
                 self.buf.rb(6),
                 1,
@@ -4055,10 +3804,7 @@ class NcchModule(module.RuminantModule):
                         while self.buf.unit > 0:
                             region["parsed"]["strings"].append(self.buf.rzs())
 
-                        while (
-                            len(region["parsed"]["strings"]) > 0
-                            and region["parsed"]["strings"][-1] == ""
-                        ):
+                        while len(region["parsed"]["strings"]) > 0 and region["parsed"]["strings"][-1] == "":
                             region["parsed"]["strings"].pop()
                     case "exefs":
                         if decrypted:
@@ -4181,9 +3927,7 @@ class SmdhModule(module.RuminantModule):
         temp = self.buf.ru8()
         meta["application-settings"]["eula-version"] = f"{self.buf.ru8()}.{temp}"
         meta["application-settings"]["reserved"] = self.buf.ru16l()
-        meta["application-settings"]["optimal-animation-default-frame"] = (
-            self.buf.rf32()
-        )
+        meta["application-settings"]["optimal-animation-default-frame"] = self.buf.rf32()
         meta["application-settings"]["cec-id"] = self.buf.ru32l()
         meta["reserved2"] = self.buf.ru64l()
 

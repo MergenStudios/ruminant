@@ -1432,9 +1432,7 @@ HDRP_V2_PROTO = {
 
 HDRP_V3_PROTO = {
     "keys": {12: "StaticMetadata"},
-    4: {
-        1: {4: {1: "float", 2: "float", 3: "float", 4: "float", 6: "float", 7: "float"}}
-    },
+    4: {1: {4: {1: "float", 2: "float", 3: "float", 4: "float", 6: "float", 7: "float"}}},
     9: {
         "keys": {3: "FrameCount", 36: "CreationDate"},
         1: {

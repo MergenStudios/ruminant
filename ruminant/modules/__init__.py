@@ -74,11 +74,7 @@ class EntryModule(module.RuminantModule):
                     matched = True
 
                     new_offset = self.buf.tell()
-                    if (
-                        self.buf.available() > 0
-                        and not self.walk_mode
-                        and not self.flat
-                    ):
+                    if self.buf.available() > 0 and not self.walk_mode and not self.flat:
                         with self.buf.cut():
                             meta = {"type": "nested", "segments": [meta]}
 
@@ -115,11 +111,7 @@ class EntryModule(module.RuminantModule):
                     self.buf.seek(offset)
 
                     with open(v, "wb") as file:
-                        length = (
-                            meta["length"]
-                            if meta["type"] != "nested"
-                            else meta["segments"][0]["length"]
-                        )
+                        length = meta["length"] if meta["type"] != "nested" else meta["segments"][0]["length"]
 
                         while length:
                             blob = self.buf.read(min(1 << 24, length))
@@ -133,9 +125,7 @@ class EntryModule(module.RuminantModule):
 
 
 def chew(blob, walk_mode=False, blob_mode=False, flat=False, extra_ctx={}):
-    return EntryModule(
-        walk_mode, blob_mode or (shallow and blob_id), flat, extra_ctx, Buf.of(blob)
-    ).chew()
+    return EntryModule(walk_mode, blob_mode or (shallow and blob_id), flat, extra_ctx, Buf.of(blob)).chew()
 
 
 from . import (  # noqa: F401,E402

@@ -162,23 +162,17 @@ class TrueTypeModule(module.RuminantModule):
                     case "fpgm" | "prep":
                         table["data"]["instruction-count"] = self.buf.unit
                     case "head":
-                        table["data"]["version"] = (
-                            str(self.buf.ru16()) + "." + str(self.buf.ru16())
-                        )
+                        table["data"]["version"] = str(self.buf.ru16()) + "." + str(self.buf.ru16())
                         table["data"]["revision"] = self.buf.ru32()
                         table["data"]["checksum-adjustment"] = self.buf.ru32()
                         table["data"]["magic"] = self.buf.rh(4)
                         table["data"]["flags"] = self.buf.rh(2)
                         table["data"]["units-per-em"] = self.buf.ru16()
                         table["data"]["created"] = utils.mp4_time_to_iso(
-                            self.buf.ri64()
-                            if self.buf.pu32() == 0
-                            else self.buf.ri64l()
+                            self.buf.ri64() if self.buf.pu32() == 0 else self.buf.ri64l()
                         )
                         table["data"]["modified"] = utils.mp4_time_to_iso(
-                            self.buf.ri64()
-                            if self.buf.pu32() == 0
-                            else self.buf.ri64l()
+                            self.buf.ri64() if self.buf.pu32() == 0 else self.buf.ri64l()
                         )
                         table["data"]["x-min"] = self.buf.ri16()
                         table["data"]["y-min"] = self.buf.ri16()
@@ -202,9 +196,7 @@ class TrueTypeModule(module.RuminantModule):
                         table["data"]["index-to-loc-format"] = self.buf.ri16()
                         table["data"]["glyph-data-format"] = self.buf.ri16()
                     case "hhea":
-                        table["data"]["version"] = (
-                            str(self.buf.ru16()) + "." + str(self.buf.ru16())
-                        )
+                        table["data"]["version"] = str(self.buf.ru16()) + "." + str(self.buf.ru16())
                         table["data"]["ascent"] = self.buf.ri16()
                         table["data"]["descent"] = self.buf.ri16()
                         table["data"]["line-gap"] = self.buf.ri16()
@@ -222,9 +214,7 @@ class TrueTypeModule(module.RuminantModule):
                         table["data"]["metric-data-format"] = self.buf.ri16()
                         table["data"]["num-of-long-hor-metrics"] = self.buf.ru16()
                     case "maxp":
-                        table["data"]["version"] = (
-                            str(self.buf.ru16()) + "." + str(self.buf.ru16())
-                        )
+                        table["data"]["version"] = str(self.buf.ru16()) + "." + str(self.buf.ru16())
                         table["data"]["num-glyphs"] = self.buf.ru16()
                         if table["data"]["version"] != "0.5" and self.buf.unit > 0:
                             table["data"]["max-points"] = self.buf.ru16()
@@ -257,9 +247,7 @@ class TrueTypeModule(module.RuminantModule):
                                 1: "Macintosh",
                                 2: "Reserved",
                                 3: "Microsoft",
-                            }.get(
-                                platform_id, "Unknown"
-                            ) + f" (0x{hex(platform_id)[2:].zfill(4)})"
+                            }.get(platform_id, "Unknown") + f" (0x{hex(platform_id)[2:].zfill(4)})"
 
                             platform_specific_id = self.buf.ru16()
                             entry["platform-specific"] = {
@@ -445,9 +433,7 @@ class TrueTypeModule(module.RuminantModule):
                                     150: "Azerbaijani (Roman script)",
                                 },
                                 3: constants.MICROSOFT_LCIDS,
-                            }.get(platform_id, {}).get(
-                                language_id, "Unknown"
-                            ) + f" (0x{hex(language_id)[2:].zfill(4)})"
+                            }.get(platform_id, {}).get(language_id, "Unknown") + f" (0x{hex(language_id)[2:].zfill(4)})"
 
                             name_id = self.buf.ru16()
                             entry["name"] = {
@@ -477,9 +463,7 @@ class TrueTypeModule(module.RuminantModule):
                                 23: "Defined by OpenType",
                                 24: "Defined by OpenType",
                                 25: "Variations PostScript Name Prefix",
-                            }.get(
-                                name_id, "Unknown"
-                            ) + f" (0x{hex(name_id)[2:].zfill(4)})"
+                            }.get(name_id, "Unknown") + f" (0x{hex(name_id)[2:].zfill(4)})"
 
                             text_length = self.buf.ru16()
                             entry["length"] = text_length
@@ -491,19 +475,13 @@ class TrueTypeModule(module.RuminantModule):
                                 text_length = ((text_length + 1) >> 1) << 1
                                 entry["text"] = self.buf.rs(
                                     text_length,
-                                    "utf-16be"
-                                    if (platform_id in (0, 3))
-                                    else "latin-1",
+                                    "utf-16be" if (platform_id in (0, 3)) else "latin-1",
                                 )
 
                             table["data"]["entries"].append(entry)
                     case "post":
-                        table["data"]["format"] = (
-                            str(self.buf.ru16()) + "." + str(self.buf.ru16())
-                        )
-                        table["data"]["italic-angle"] = (
-                            str(self.buf.ru16()) + "." + str(self.buf.ru16())
-                        )
+                        table["data"]["format"] = str(self.buf.ru16()) + "." + str(self.buf.ru16())
+                        table["data"]["italic-angle"] = str(self.buf.ru16()) + "." + str(self.buf.ru16())
                         table["data"]["underline-position"] = self.buf.ri16()
                         table["data"]["underline-thickness"] = self.buf.ri16()
                         table["data"]["is-fixed-pitch"] = self.buf.ru32()
@@ -559,18 +537,7 @@ class TrueTypeModule(module.RuminantModule):
                         table["data"] = self.read_dsig()
                     case "Wasm":
                         table["data"] = chew(self.buf.readunit())
-                    case (
-                        "glyf"
-                        | "hmtx"
-                        | "loca"
-                        | "GDEF"
-                        | "GPOS"
-                        | "GSUB"
-                        | "hdmx"
-                        | "VDMX"
-                        | "JSTF"
-                        | "LTSH"
-                    ):
+                    case "glyf" | "hmtx" | "loca" | "GDEF" | "GPOS" | "GSUB" | "hdmx" | "VDMX" | "JSTF" | "LTSH":
                         # not really parsable as it's the raw glyph data
                         pass
                     case _:
@@ -583,10 +550,7 @@ class TrueTypeModule(module.RuminantModule):
                 self.buf.seek(table["offset"])
                 self.buf.skip(table["length"])
 
-        if (
-            self.buf.available() > 4
-            and self.buf.pu64() & 0xffffffffff00fffe == 0x0000000100000000
-        ):
+        if self.buf.available() > 4 and self.buf.pu64() & 0xffffffffff00fffe == 0x0000000100000000:
             meta["tables"].append({"tag": "DSIG", "data": self.read_dsig()})
 
         if self.buf.tell() % 4 != 0:

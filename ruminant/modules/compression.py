@@ -23,9 +23,7 @@ class GzipModule(module.RuminantModule):
 
         # while all gzip files use compression mode 8 (Deflate), the format allows others
         compression_method = self.buf.ru8()
-        assert compression_method == 8, (
-            f"Unknown gzip compression method {compression_method}"
-        )
+        assert compression_method == 8, f"Unknown gzip compression method {compression_method}"
         meta["compression-method"] = utils.unraw(compression_method, 2, {8: "Deflate"})
 
         flags = self.buf.ru8()
@@ -110,11 +108,7 @@ class GzipModule(module.RuminantModule):
             decompressor = zlib.decompressobj(-zlib.MAX_WBITS)
 
             while not decompressor.eof:
-                fd.write(
-                    decompressor.decompress(
-                        self.buf.read(min(1 << 24, self.buf.available()))
-                    )
-                )
+                fd.write(decompressor.decompress(self.buf.read(min(1 << 24, self.buf.available()))))
 
             self.buf.seek(-len(decompressor.unused_data), 1)
 
@@ -184,11 +178,7 @@ class ZstdModule(module.RuminantModule):
             meta["header"] = {}
             meta["header"]["flags"] = {"raw": self.buf.ru8(), "names": []}
 
-            meta["header"]["flags"]["names"].append(
-                ["FCS_1", "FCS_2", "FCS_4", "FCS_8"][
-                    meta["header"]["flags"]["raw"] >> 6
-                ]
-            )
+            meta["header"]["flags"]["names"].append(["FCS_1", "FCS_2", "FCS_4", "FCS_8"][meta["header"]["flags"]["raw"] >> 6])
             if meta["header"]["flags"]["raw"] & (1 << 5):
                 meta["header"]["flags"]["names"].append("SINGLE_SEGMENT")
                 if "FCS_1" in meta["header"]["flags"]["names"]:
@@ -197,18 +187,14 @@ class ZstdModule(module.RuminantModule):
                 meta["header"]["flags"]["names"].append("CONTENT_CHECKSUM")
             if meta["header"]["flags"]["raw"] & 0x03:
                 meta["header"]["flags"]["names"].append(
-                    [None, "DID_1", "DID_2", "DID_4"][
-                        meta["header"]["flags"]["raw"] & 0x03
-                    ]
+                    [None, "DID_1", "DID_2", "DID_4"][meta["header"]["flags"]["raw"] & 0x03]
                 )
 
             if "SINGLE_SEGMENT" not in meta["header"]["flags"]["names"]:
                 temp = self.buf.ru8()
                 exponent = temp >> 3
                 mantissa = temp & 0x03
-                meta["header"]["window-size"] = math.ceil(
-                    ((1 << (exponent + 10)) / 8) * mantissa + (1 << (exponent + 10))
-                )
+                meta["header"]["window-size"] = math.ceil(((1 << (exponent + 10)) / 8) * mantissa + (1 << (exponent + 10)))
 
             if "DID_1" in meta["header"]["flags"]["names"]:
                 meta["header"]["dictionary-id"] = self.buf.ru8()

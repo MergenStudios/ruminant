@@ -17,22 +17,13 @@ class VbmetaModule(module.RuminantModule):
         match algo:
             # RSA is the only supported family right now
             case (
-                "SHA256_RSA2048"
-                | "SHA256_RSA4096"
-                | "SHA256_RSA8192"
-                | "SHA512_RSA2048"
-                | "SHA512_RSA4096"
-                | "SHA512_RSA8192"
+                "SHA256_RSA2048" | "SHA256_RSA4096" | "SHA256_RSA8192" | "SHA512_RSA2048" | "SHA512_RSA4096" | "SHA512_RSA8192"
             ):
                 bits = self.buf.ru32()
                 key["bits"] = bits
                 key["n0inv"] = self.buf.ru32()
-                key["modulus"] = int.from_bytes(self.buf.read((bits + 7) // 8)) & (
-                    (1 << bits) - 1
-                )
-                key["rrmodn"] = int.from_bytes(self.buf.read((bits + 7) // 8)) & (
-                    (1 << bits) - 1
-                )
+                key["modulus"] = int.from_bytes(self.buf.read((bits + 7) // 8)) & ((1 << bits) - 1)
+                key["rrmodn"] = int.from_bytes(self.buf.read((bits + 7) // 8)) & ((1 << bits) - 1)
 
                 n = key["modulus"]
                 # check whether values are correct
@@ -91,21 +82,13 @@ class VbmetaModule(module.RuminantModule):
 
         meta["authentication-data-block"] = {}
         self.buf.seek(256 + meta["header"]["hash-offset"])
-        meta["authentication-data-block"]["hash"] = self.buf.rh(
-            meta["header"]["hash-size"]
-        )
+        meta["authentication-data-block"]["hash"] = self.buf.rh(meta["header"]["hash-size"])
         self.buf.seek(256 + meta["header"]["signature-offset"])
-        meta["authentication-data-block"]["signature"] = self.buf.rh(
-            meta["header"]["signature-size"]
-        )
+        meta["authentication-data-block"]["signature"] = self.buf.rh(meta["header"]["signature-size"])
 
         meta["auxiliary-data-block"] = {}
 
-        self.buf.seek(
-            256
-            + meta["header"]["authentication-data-block-size"]
-            + meta["header"]["descriptors-offset"]
-        )
+        self.buf.seek(256 + meta["header"]["authentication-data-block-size"] + meta["header"]["descriptors-offset"])
         self.buf.pasunit(meta["header"]["descriptors-size"])
 
         # these are now kind of key-value pairs
@@ -146,13 +129,9 @@ class VbmetaModule(module.RuminantModule):
                     tag["payload"]["root-digest-length"] = self.buf.ru32()
                     tag["payload"]["flags"] = utils.unpack_flags(self.buf.ru32(), [])
                     tag["payload"]["reserved"] = chew(self.buf.read(60), blob_mode=True)
-                    tag["payload"]["partition-name"] = self.buf.rs(
-                        tag["payload"]["partition-name-length"]
-                    )
+                    tag["payload"]["partition-name"] = self.buf.rs(tag["payload"]["partition-name-length"])
                     tag["payload"]["salt"] = self.buf.rh(tag["payload"]["salt-length"])
-                    tag["payload"]["root-digest"] = self.buf.rh(
-                        tag["payload"]["root-digest-length"]
-                    )
+                    tag["payload"]["root-digest"] = self.buf.rh(tag["payload"]["root-digest-length"])
                 # root hash for partition
                 case 0x02:
                     tag["type"] = "HASH"
@@ -162,13 +141,9 @@ class VbmetaModule(module.RuminantModule):
                     tag["payload"]["salt-length"] = self.buf.ru32()
                     tag["payload"]["root-digest-length"] = self.buf.ru32()
                     tag["payload"]["reserved"] = chew(self.buf.read(64), blob_mode=True)
-                    tag["payload"]["partition-name"] = self.buf.rs(
-                        tag["payload"]["partition-name-length"]
-                    )
+                    tag["payload"]["partition-name"] = self.buf.rs(tag["payload"]["partition-name-length"])
                     tag["payload"]["salt"] = self.buf.rh(tag["payload"]["salt-length"])
-                    tag["payload"]["root-digest"] = self.buf.rh(
-                        tag["payload"]["root-digest-length"]
-                    )
+                    tag["payload"]["root-digest"] = self.buf.rh(tag["payload"]["root-digest-length"])
                 # command line for Linux kernel, seems to be baked into the kernel nowadays so unused
                 case 0x03:
                     tag["type"] = "KERNEL_CMDLINE"
@@ -182,12 +157,8 @@ class VbmetaModule(module.RuminantModule):
                     tag["payload"]["public-key-length"] = self.buf.ru32()
                     tag["payload"]["flags"] = utils.unpack_flags(self.buf.ru32(), [])
                     tag["payload"]["reserved"] = chew(self.buf.read(60), blob_mode=True)
-                    tag["payload"]["partition-name"] = self.buf.rs(
-                        tag["payload"]["parition-name-length"]
-                    )
-                    tag["payload"]["public-key"] = self.read_pubkey(
-                        meta["header"]["algorithm-type"]["name"]
-                    )
+                    tag["payload"]["partition-name"] = self.buf.rs(tag["payload"]["parition-name-length"])
+                    tag["payload"]["public-key"] = self.read_pubkey(meta["header"]["algorithm-type"]["name"])
                 case _:
                     tag["type"] = f"UNKNOWN (0x{hex(typ)[2:].zfill(16)})"
                     tag["payload"]["blob"] = chew(self.buf.readunit())
@@ -204,39 +175,25 @@ class VbmetaModule(module.RuminantModule):
 
         # images don't have to be signed so check
         if meta["header"]["public-key-size"]:
-            self.buf.seek(
-                256
-                + meta["header"]["authentication-data-block-size"]
-                + meta["header"]["public-key-offset"]
-            )
+            self.buf.seek(256 + meta["header"]["authentication-data-block-size"] + meta["header"]["public-key-offset"])
             self.buf.pasunit(meta["header"]["public-key-size"])
 
-            meta["auxiliary-data-block"]["public-key"] = self.read_pubkey(
-                meta["header"]["algorithm-type"]["name"]
-            )
+            meta["auxiliary-data-block"]["public-key"] = self.read_pubkey(meta["header"]["algorithm-type"]["name"])
             # again, no other algorithm is supported right now
             if "RSA" in meta["header"]["algorithm-type"]["name"]:
                 sig = pow(
                     int(meta["authentication-data-block"]["signature"], 16),
                     65537,
                     meta["auxiliary-data-block"]["public-key"]["modulus"],
-                ).to_bytes(
-                    len(meta["authentication-data-block"]["signature"]) // 2, "big"
-                )
+                ).to_bytes(len(meta["authentication-data-block"]["signature"]) // 2, "big")
                 sig = sig[2:].lstrip(b"\xff")[1:]
-                meta["auxiliary-data-block"]["public-key"]["signature"] = (
-                    utils.read_der(Buf(sig))
-                )
+                meta["auxiliary-data-block"]["public-key"]["signature"] = utils.read_der(Buf(sig))
 
             self.buf.sapunit()
 
         # optional public key metadata
         if meta["header"]["public-key-metadata-size"]:
-            self.buf.seek(
-                256
-                + meta["header"]["authentication-data-block-size"]
-                + meta["header"]["public-key-metadata-offset"]
-            )
+            self.buf.seek(256 + meta["header"]["authentication-data-block-size"] + meta["header"]["public-key-metadata-offset"])
             self.buf.pasunit(meta["header"]["public-key-metadata-size"])
 
             with self.buf.subunit():
@@ -289,10 +246,7 @@ class AndroidBootImgModule(module.RuminantModule):
                 meta["header"]["extra-cmdline"] = self.buf.rs(1024)
 
                 if self.buf.tell() % meta["header"]["page-size"]:
-                    self.buf.skip(
-                        meta["header"]["page-size"]
-                        - (self.buf.tell() % meta["header"]["page-size"])
-                    )
+                    self.buf.skip(meta["header"]["page-size"] - (self.buf.tell() % meta["header"]["page-size"]))
 
                 self.buf.pasunit(meta["header"]["kernel-size"])
 
@@ -302,10 +256,7 @@ class AndroidBootImgModule(module.RuminantModule):
                 self.buf.sapunit()
 
                 if self.buf.tell() % meta["header"]["page-size"]:
-                    self.buf.skip(
-                        meta["header"]["page-size"]
-                        - (self.buf.tell() % meta["header"]["page-size"])
-                    )
+                    self.buf.skip(meta["header"]["page-size"] - (self.buf.tell() % meta["header"]["page-size"]))
 
                 self.buf.pasunit(meta["header"]["ramdisk-size"])
 
@@ -315,10 +266,7 @@ class AndroidBootImgModule(module.RuminantModule):
                 self.buf.sapunit()
 
                 if self.buf.tell() % meta["header"]["page-size"]:
-                    self.buf.skip(
-                        meta["header"]["page-size"]
-                        - (self.buf.tell() % meta["header"]["page-size"])
-                    )
+                    self.buf.skip(meta["header"]["page-size"] - (self.buf.tell() % meta["header"]["page-size"]))
 
                 self.buf.pasunit(meta["header"]["second-size"])
 
@@ -328,10 +276,7 @@ class AndroidBootImgModule(module.RuminantModule):
                 self.buf.sapunit()
 
                 if self.buf.tell() % meta["header"]["page-size"]:
-                    self.buf.skip(
-                        meta["header"]["page-size"]
-                        - (self.buf.tell() % meta["header"]["page-size"])
-                    )
+                    self.buf.skip(meta["header"]["page-size"] - (self.buf.tell() % meta["header"]["page-size"]))
             case 3 | 4:
                 meta["header"]["kernel-size"] = self.buf.ru32l()
                 meta["header"]["ramdisk-size"] = self.buf.ru32l()

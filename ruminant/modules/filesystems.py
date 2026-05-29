@@ -42,15 +42,9 @@ class BtrfsModule(module.RuminantModule):
         meta["header"]["stripe-size"] = self.buf.ru32l()
         meta["header"]["sys-chunk-array-size"] = self.buf.ru32l()
         meta["header"]["chunk-root-generation"] = self.buf.ru64l()
-        meta["header"]["compat-flags"] = utils.unpack_flags(
-            self.buf.ru64l(), constants.BTRFS_FLAGS
-        )
-        meta["header"]["compat-flags-ro"] = utils.unpack_flags(
-            self.buf.ru64l(), constants.BTRFS_FLAGS
-        )
-        meta["header"]["incompat-flags"] = utils.unpack_flags(
-            self.buf.ru64l(), constants.BTRFS_FLAGS
-        )
+        meta["header"]["compat-flags"] = utils.unpack_flags(self.buf.ru64l(), constants.BTRFS_FLAGS)
+        meta["header"]["compat-flags-ro"] = utils.unpack_flags(self.buf.ru64l(), constants.BTRFS_FLAGS)
+        meta["header"]["incompat-flags"] = utils.unpack_flags(self.buf.ru64l(), constants.BTRFS_FLAGS)
 
         self.buf.seek(0)
         if meta["header"]["device-count"] == 1:
@@ -114,18 +108,9 @@ class MbrGptModule(module.RuminantModule):
 
         self.seek_lba(gpt["partition-entries-lba"])
         crc32 = (
-            zlib
-            .crc32(
-                self.buf.peek(
-                    gpt["partition-entry-size"] * gpt["partition-entry-count"]
-                )
-            )
-            .to_bytes(4, "little")
-            .hex()
+            zlib.crc32(self.buf.peek(gpt["partition-entry-size"] * gpt["partition-entry-count"])).to_bytes(4, "little").hex()
         )
-        gpt["partition-entries-crc"]["correct"] = (
-            gpt["partition-entries-crc"]["raw"] == crc32
-        )
+        gpt["partition-entries-crc"]["correct"] = gpt["partition-entries-crc"]["raw"] == crc32
         if not gpt["partition-entries-crc"]["correct"]:
             gpt["partition-entries-crc"]["actual"] = crc32
 
@@ -140,15 +125,11 @@ class MbrGptModule(module.RuminantModule):
             if sum(self.buf.peek(self.buf.unit)):
                 temp = self.buf.rguid()
                 partition["number"] = number
-                partition["type"] = constants.GPT_TYPE_UUIDS.get(
-                    temp, f"Unknown ({temp})"
-                )
+                partition["type"] = constants.GPT_TYPE_UUIDS.get(temp, f"Unknown ({temp})")
                 partition["guid"] = self.buf.rguid()
                 partition["first-lba"] = self.buf.ru64l()
                 partition["last-lba"] = self.buf.ru64l()
-                partition["flags"] = utils.unpack_flags(
-                    self.buf.ru64l(), ((60, "read-only"),)
-                )
+                partition["flags"] = utils.unpack_flags(self.buf.ru64l(), ((60, "read-only"),))
                 partition["name"] = self.buf.rs(self.buf.unit, "utf-16le")
                 gpt["partition-entries"].append(partition)
 
@@ -160,9 +141,7 @@ class MbrGptModule(module.RuminantModule):
         gpt["partitions"] = []
         for partition in gpt["partition-entries"]:
             self.seek_lba(partition["first-lba"])
-            with self.buf.sub(
-                (partition["last-lba"] - partition["first-lba"] + 1) * self.bs
-            ):
+            with self.buf.sub((partition["last-lba"] - partition["first-lba"] + 1) * self.bs):
                 gpt["partitions"].append(chew(self.buf))
 
         return gpt
@@ -345,18 +324,14 @@ class BtrfsSteamModule(module.RuminantModule):
                 crc = 0
 
                 for i in range(0, 6):
-                    crc = constants.CRC32C_TABLE[(crc ^ self.buf.ru8()) & 0xff] ^ (
-                        crc >> 8
-                    )
+                    crc = constants.CRC32C_TABLE[(crc ^ self.buf.ru8()) & 0xff] ^ (crc >> 8)
 
                 for i in range(0, 4):
                     self.buf.skip(1)
                     crc = constants.CRC32C_TABLE[crc & 0xff] ^ (crc >> 8)
 
                 for i in range(0, cmd["length"]):
-                    crc = constants.CRC32C_TABLE[(crc ^ self.buf.ru8()) & 0xff] ^ (
-                        crc >> 8
-                    )
+                    crc = constants.CRC32C_TABLE[(crc ^ self.buf.ru8()) & 0xff] ^ (crc >> 8)
 
             cmd["crc32c"] = {
                 "value": hex(crc32c)[2:].zfill(8),
@@ -423,27 +398,14 @@ class BtrfsSteamModule(module.RuminantModule):
                     case 0x0001:
                         value["value"] = self.buf.ruuid()
                     # u64
-                    case (
-                        0x0002
-                        | 0x0003
-                        | 0x0004
-                        | 0x0006
-                        | 0x0007
-                        | 0x0008
-                        | 0x0012
-                        | 0x0015
-                        | 0x0017
-                        | 0x0018
-                    ):
+                    case 0x0002 | 0x0003 | 0x0004 | 0x0006 | 0x0007 | 0x0008 | 0x0012 | 0x0015 | 0x0017 | 0x0018:
                         value["value"] = self.buf.ru64l()
                     # u64 octal
                     case 0x0005:
                         value["value"] = "0o" + oct(self.buf.ru64l())[2:].zfill(3)
                     case 0x0009 | 0x000a | 0x000b | 0x000c:
                         s = utils.unix_to_date(self.buf.ru64l()).split("+")
-                        value["value"] = (
-                            s[0] + "." + str(self.buf.ru32l()).zfill(9) + "+" + s[1]
-                        )
+                        value["value"] = s[0] + "." + str(self.buf.ru32l()).zfill(9) + "+" + s[1]
                     # string
                     case 0x000d | 0x000f | 0x0010 | 0x0011 | 0x0016:
                         value["value"] = self.buf.rs(self.buf.unit)

@@ -104,15 +104,11 @@ class PdfModule(module.RuminantModule):
         while len(self.queue) + len(self.compressed):
             stuck = True
             if len(self.compressed):
-                for compressed_id, compressed_index, compressed_buf in self.compressed[
-                    :
-                ]:
+                for compressed_id, compressed_index, compressed_buf in self.compressed[:]:
                     if compressed_id in self.objects:
                         try:
                             with compressed_buf:
-                                compressed_buf.seek(
-                                    self.objects[compressed_id][0]["offset"]
-                                )
+                                compressed_buf.seek(self.objects[compressed_id][0]["offset"])
                                 self.parse_object(
                                     compressed_buf,
                                     packed=(compressed_index, compressed_id),
@@ -213,21 +209,12 @@ class PdfModule(module.RuminantModule):
         if isinstance(obj["value"], dict):
             match obj["value"].get("Type"), obj["value"].get("Subtype"):
                 case "/Annot", _:
-                    if (
-                        "AAPL:AKExtras" in obj["value"]
-                        and "AAPL:AKAnnotationObject" in obj["value"]["AAPL:AKExtras"]
-                    ):
+                    if "AAPL:AKExtras" in obj["value"] and "AAPL:AKAnnotationObject" in obj["value"]["AAPL:AKExtras"]:
                         obj["data"] = {}
-                        obj["data"]["bplist"] = chew(
-                            obj["value"]["AAPL:AKExtras"][
-                                "AAPL:AKAnnotationObject"
-                            ].encode("utf-8")
-                        )
+                        obj["data"]["bplist"] = chew(obj["value"]["AAPL:AKExtras"]["AAPL:AKAnnotationObject"].encode("utf-8"))
                 case "/Sig", _:
                     if "Contents" in obj["value"]:
-                        obj["value"]["Contents"] = chew(
-                            bytes.fromhex(obj["value"]["Contents"])
-                        )
+                        obj["value"]["Contents"] = chew(bytes.fromhex(obj["value"]["Contents"]))
 
             if "Length" in obj["value"]:
                 length = self.resolve(obj["value"]["Length"])
@@ -258,32 +245,10 @@ class PdfModule(module.RuminantModule):
                                 case "/LZWDecode":
                                     buf = Buf(lzw.decompress(buf.read()))
                                 case "/ASCIIHexDecode":
-                                    buf = Buf(
-                                        bytes.fromhex(
-                                            buf
-                                            .read()
-                                            .rstrip(b"\n")
-                                            .split(b">")[0]
-                                            .decode("latin-1")
-                                        )
-                                    )
+                                    buf = Buf(bytes.fromhex(buf.read().rstrip(b"\n").split(b">")[0].decode("latin-1")))
                                 case "/ASCII85Decode":
-                                    buf = Buf(
-                                        base64.a85decode(
-                                            buf
-                                            .read()
-                                            .rstrip(b"\n")
-                                            .split(b">")[0]
-                                            .decode("latin-1")
-                                        )
-                                    )
-                                case (
-                                    "/DCTDecode"
-                                    | "/CCITTFaxDecode"
-                                    | "/JPXDecode"
-                                    | "/JBIG2Decode"
-                                    | "/Crypt"
-                                ):
+                                    buf = Buf(base64.a85decode(buf.read().rstrip(b"\n").split(b">")[0].decode("latin-1")))
+                                case "/DCTDecode" | "/CCITTFaxDecode" | "/JPXDecode" | "/JBIG2Decode" | "/Crypt":
                                     pass
                                 case _:
                                     raise ValueError(f"Unknown filter '{filt}'")
@@ -297,19 +262,14 @@ class PdfModule(module.RuminantModule):
                                         pass
                                     case 2:
                                         row_length = math.ceil(
-                                            params["Columns"]
-                                            * params.get("Colors", 1)
-                                            * params.get("BitsPerComponent", 8)
-                                            / 8
+                                            params["Columns"] * params.get("Colors", 1) * params.get("BitsPerComponent", 8) / 8
                                         )
                                         bpp = row_length // params["Columns"]
 
                                         data = bytearray(buf.read())
                                         for i in range(len(data)):
                                             if i % row_length >= bpp:
-                                                data[i] = (
-                                                    data[i] + data[i - bpp]
-                                                ) % 256
+                                                data[i] = (data[i] + data[i - bpp]) % 256
 
                                         buf = Buf(data)
                                     case 10 | 11 | 12 | 13 | 14 | 15:
@@ -327,14 +287,10 @@ class PdfModule(module.RuminantModule):
                                             )
                                         )
                                     case _:
-                                        raise ValueError(
-                                            f"Unknown predictor: {params['Predictor']}"
-                                        )
+                                        raise ValueError(f"Unknown predictor: {params['Predictor']}")
 
                         if packed is not None:
-                            buf.seek(
-                                self.resolve(obj["value"].get("First", 0)) + packed[0]
-                            )
+                            buf.seek(self.resolve(obj["value"].get("First", 0)) + packed[0])
                             return self.parse_object(buf, obj_id=packed[1])
 
                         obj_type = self.resolve(obj["value"].get("Type"))
@@ -350,13 +306,9 @@ class PdfModule(module.RuminantModule):
                                     index = [0, (1 << 64) - 1]
 
                                 while buf.available():
-                                    f0 = (
-                                        int.from_bytes(buf.read(w0), "big") if w0 else 1
-                                    )
+                                    f0 = int.from_bytes(buf.read(w0), "big") if w0 else 1
                                     f1 = int.from_bytes(buf.read(w1), "big")
-                                    f2 = (
-                                        int.from_bytes(buf.read(w2), "big") if w2 else 0
-                                    )
+                                    f2 = int.from_bytes(buf.read(w2), "big") if w2 else 0
 
                                     if f0 == 1:
                                         self.queue.append((f1, old_buf))
@@ -394,9 +346,7 @@ class PdfModule(module.RuminantModule):
 
                                             assert len(text)
                                             for char in text:
-                                                assert ord(char) >= 0x20 or ord(
-                                                    char
-                                                ) in (
+                                                assert ord(char) >= 0x20 or ord(char) in (
                                                     0x0a,
                                                     0x0d,
                                                     0x09,
@@ -595,19 +545,9 @@ class PdfModule(module.RuminantModule):
                     token = token.decode("latin-1")
                 elif len(token) % 2 == 0:
                     token = token.encode("latin-1").decode("utf-16")
-            elif (
-                len(token) >= 2
-                and token[0] == "\xff"
-                and token[1] == "\xfe"
-                and len(token) % 2 == 0
-            ):
+            elif len(token) >= 2 and token[0] == "\xff" and token[1] == "\xfe" and len(token) % 2 == 0:
                 token = token.encode("latin-1").decode("utf-16le")
-            elif (
-                len(token) >= 2
-                and ord(token[0]) == 376
-                and ord(token[1]) == 377
-                and len(token) % 2 == 0
-            ):
+            elif len(token) >= 2 and ord(token[0]) == 376 and ord(token[1]) == 377 and len(token) % 2 == 0:
                 # I don't know either
                 # pdfTeX is weird
                 # also death to UTF-16
@@ -620,12 +560,7 @@ class PdfModule(module.RuminantModule):
             return token.replace("\\(", "(").replace("\\)", ")")
         elif token.startswith("<"):
             val = bytes.fromhex(token[1:-1].replace(" ", ""))
-            if (
-                len(val) >= 2
-                and val[0] == 0xfe
-                and val[1] == 0xff
-                and len(val) % 2 == 0
-            ):
+            if len(val) >= 2 and val[0] == 0xfe and val[1] == 0xff and len(val) % 2 == 0:
                 val = val.decode("utf16")
             else:
                 val = val.hex()
@@ -677,9 +612,7 @@ class Ole2Module(module.RuminantModule):
             },
             True,
         )
-        entry["color"] = utils.unraw(
-            self.buf.ru8(), 1, {0x00: "Black", 0x01: "Red"}, True
-        )
+        entry["color"] = utils.unraw(self.buf.ru8(), 1, {0x00: "Black", 0x01: "Red"}, True)
         entry["left"] = self.buf.ri32l()
         entry["right"] = self.buf.ri32l()
         entry["root"] = self.buf.ri32l()
@@ -702,9 +635,7 @@ class Ole2Module(module.RuminantModule):
         meta["header"]["clsid"] = self.buf.rguid()
         meta["header"]["minor-version"] = self.buf.ru16l()
         meta["header"]["major-version"] = self.buf.ru16l()
-        meta["header"]["byte-order"] = utils.unraw(
-            self.buf.ru16l(), 2, {65534: "little"}
-        )
+        meta["header"]["byte-order"] = utils.unraw(self.buf.ru16l(), 2, {65534: "little"})
         meta["header"]["sector-size"] = 1 << self.buf.ru16l()
         self.sector_size = meta["header"]["sector-size"]
         meta["header"]["short-sector-size"] = 1 << self.buf.ru16l()
@@ -753,13 +684,7 @@ class Ole2Module(module.RuminantModule):
         self.buf.seek(512 + meta["header"]["directory-start"] * self.sector_size)
         meta["root"] = self.read_direntry()
 
-        self.buf.seek(
-            512
-            + max(
-                max(self.master_fat), max(self.sector_fat), max(self.short_sector_fat)
-            )
-            * self.sector_size
-        )
+        self.buf.seek(512 + max(max(self.master_fat), max(self.sector_fat), max(self.short_sector_fat)) * self.sector_size)
 
         return meta
 
@@ -781,14 +706,10 @@ class RegistryHiveFile(module.RuminantModule):
         self.buf.skip(4)
         meta["header"]["primary-sequence-number"] = self.buf.ru32l()
         meta["header"]["secondary-sequence-number"] = self.buf.ru32l()
-        meta["header"]["last-written-timestamp"] = utils.filetime_to_date(
-            self.buf.ru64l()
-        )
+        meta["header"]["last-written-timestamp"] = utils.filetime_to_date(self.buf.ru64l())
         meta["header"]["major-version"] = self.buf.ru32l()
         meta["header"]["minor-version"] = self.buf.ru32l()
-        meta["header"]["file-type"] = utils.unraw(
-            self.buf.ru32l(), 4, {0x00000000: "Primary", 0x00000001: "Log"}, True
-        )
+        meta["header"]["file-type"] = utils.unraw(self.buf.ru32l(), 4, {0x00000000: "Primary", 0x00000001: "Log"}, True)
         meta["header"]["format-flags"] = utils.unpack_flags(self.buf.ru32l(), ())
         meta["header"]["root-cell-offset"] = self.buf.ru32l()
         meta["header"]["hive-length"] = self.buf.ru32l()

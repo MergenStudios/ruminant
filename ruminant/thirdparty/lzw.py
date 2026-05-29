@@ -95,9 +95,7 @@ class Decoder(object):
         if codepoint == CLEAR_CODE:
             self._clear_codes()
         elif codepoint == END_OF_INFO_CODE:
-            raise ValueError(
-                "End of information code not supported directly by this Decoder"
-            )
+            raise ValueError("End of information code not supported directly by this Decoder")
         else:
             if codepoint in self._codepoints:
                 ret = self._codepoints[codepoint]

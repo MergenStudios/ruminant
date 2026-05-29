@@ -71,9 +71,7 @@ class FlacModule(module.RuminantModule):
 
                     block["data"]["user-strings"] = []
                     for i in range(0, self.buf.ru32l()):
-                        block["data"]["user-strings"].append(
-                            self.buf.rs(self.buf.ru32l())
-                        )
+                        block["data"]["user-strings"].append(self.buf.rs(self.buf.ru32l()))
                 case 6:
                     block["type"] = "Picture"
                     picture_type = self.buf.ru32()
@@ -101,9 +99,7 @@ class FlacModule(module.RuminantModule):
                         18: "Illustration",
                         19: "Band or artist logotype",
                         20: "Publisher or studio logotype",
-                    }.get(
-                        picture_type, "Unknown"
-                    ) + f" (0x{hex(picture_type)[2:].zfill(4)})"
+                    }.get(picture_type, "Unknown") + f" (0x{hex(picture_type)[2:].zfill(4)})"
                     block["data"]["media-type"] = self.buf.rs(self.buf.ru32())
                     block["data"]["description"] = self.buf.rs(self.buf.ru32())
                     block["data"]["width"] = self.buf.ru32()
@@ -163,9 +159,7 @@ class ID3v2Module(module.RuminantModule):
 
         self.buf.skip(3)
         meta["header"] = {}
-        meta["header"]["version"] = str(
-            "2." + str(self.buf.ru8()) + "." + str(self.buf.ru8())
-        )
+        meta["header"]["version"] = str("2." + str(self.buf.ru8()) + "." + str(self.buf.ru8()))
 
         flags = self.buf.ru8()
         meta["header"]["flags"] = {
@@ -193,9 +187,7 @@ class ID3v2Module(module.RuminantModule):
 
             meta["extended-header"]["flag-values"] = []
             while self.buf.unit > 0:
-                meta["extended-header"]["flag-values"].append(
-                    self.buf.rh(self.buf.ru8())
-                )
+                meta["extended-header"]["flag-values"].append(self.buf.rh(self.buf.ru8()))
 
             self.buf.skipunit()
             self.buf.popunit()
@@ -236,9 +228,7 @@ class ID3v2Module(module.RuminantModule):
                 frame["format-flags"]["group-id"] = self.buf.ru8()
 
             if frame["format-flags"]["has-data-length-indictator"]:
-                frame["format-flags"]["data-length"] = self.read_length(
-                    bool(format_flags & 0b00000010)
-                )
+                frame["format-flags"]["data-length"] = self.read_length(bool(format_flags & 0b00000010))
 
             content = self.buf.read(frame["length"])
 
@@ -354,9 +344,7 @@ class ID3v2Module(module.RuminantModule):
                         frame["data"] = {}
                         frame["data"]["encoding"] = encoding
                         frame["data"]["language"] = language
-                        frame["data"]["short-description"] = short_description.decode(
-                            encoding
-                        )
+                        frame["data"]["short-description"] = short_description.decode(encoding)
                         frame["data"]["text"] = content.decode(encoding).rstrip("\x00")
                     case "GEOB":
                         encoding = {
@@ -438,23 +426,15 @@ class ID3v2Module(module.RuminantModule):
                             2: "utf-16be",
                             3: "utf-8",
                         }.get(content[0])
-                        frame["data"]["string"] = (
-                            content[1:].decode(frame["data"]["encoding"]).rstrip("\x00")
-                        )
+                        frame["data"]["string"] = content[1:].decode(frame["data"]["encoding"]).rstrip("\x00")
 
                         if frame["type"] == "TXXX":
-                            frame["data"]["namespace"] = frame["data"]["string"].split(
-                                "\x00"
-                            )[0]
-                            frame["data"]["string"] = frame["data"]["string"].split(
-                                "\x00"
-                            )[1]
+                            frame["data"]["namespace"] = frame["data"]["string"].split("\x00")[0]
+                            frame["data"]["string"] = frame["data"]["string"].split("\x00")[1]
 
                             match frame["data"]["namespace"]:
                                 case "segmentmetadata":
-                                    frame["data"]["string"] = json.loads(
-                                        frame["data"]["string"]
-                                    )
+                                    frame["data"]["string"] = json.loads(frame["data"]["string"])
                     case "WORS" | "WPUB":
                         frame["data"] = content.decode("latin-1")
                     case _:
@@ -480,13 +460,8 @@ class Mp3Module(module.RuminantModule):
         if buf.available() < 4:
             return False
 
-        if (
-            buf.pu32() & 0b11111111111_00_11_0_0000_00_0_000000000
-            == 0b11111111111_00_01_0_0000_00_0_000000000
-        ):
-            return (buf.pu32() >> 12) & 0b1111 != 0b1111 and (
-                buf.pu32() >> 10
-            ) & 0b11 != 0b11
+        if buf.pu32() & 0b11111111111_00_11_0_0000_00_0_000000000 == 0b11111111111_00_01_0_0000_00_0_000000000:
+            return (buf.pu32() >> 12) & 0b1111 != 0b1111 and (buf.pu32() >> 10) & 0b11 != 0b11
 
     def chew(self):
         meta = {}
@@ -585,12 +560,7 @@ class Mp3Module(module.RuminantModule):
             frame["emphasis"] = self.buf.rb(2)
 
             self.buf.skip(
-                (
-                    (144 if frame["version"] == "MPEG-1" else 72)
-                    * frame["bitrate"]
-                    * 1000
-                )
-                // frame["frequency"]
+                ((144 if frame["version"] == "MPEG-1" else 72) * frame["bitrate"] * 1000) // frame["frequency"]
                 + frame["padding"]
                 - 4
             )

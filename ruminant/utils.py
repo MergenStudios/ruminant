@@ -54,8 +54,7 @@ def _xml_to_dict(elem):
             res["text"] = chew(base64.b64decode(res["text"]))
         elif (
             # Android keybox XMLs embed the keys as PEM
-            elem.tag in ("PrivateKey", "Certificate")
-            and res.get("attributes", {}).get("format") == "pem"
+            elem.tag in ("PrivateKey", "Certificate") and res.get("attributes", {}).get("format") == "pem"
         ):
             res["text"] = chew(res["text"].strip().encode("utf-8"))
 
@@ -201,52 +200,28 @@ def read_protobuf(buf, length, escape=False, decode={}):
                             value = (value ^ 0xffffffffffffffff) + 1
                     case "u8":
                         # bytes are actually u8s
-                        value = [
-                            int.from_bytes(value[i : i + 1], "little")
-                            for i in range(0, len(value))
-                        ]
+                        value = [int.from_bytes(value[i : i + 1], "little") for i in range(0, len(value))]
                     case "u16":
                         # bytes are actually u16s
-                        value = [
-                            int.from_bytes(value[i : i + 2], "little")
-                            for i in range(0, len(value))
-                        ]
+                        value = [int.from_bytes(value[i : i + 2], "little") for i in range(0, len(value))]
                     case "u32":
                         # bytes are actually u32s
-                        value = [
-                            int.from_bytes(value[i : i + 4], "little")
-                            for i in range(0, len(value), 4)
-                        ]
+                        value = [int.from_bytes(value[i : i + 4], "little") for i in range(0, len(value), 4)]
                     case "u64":
                         # bytes are actually u64s
-                        value = [
-                            int.from_bytes(value[i : i + 8], "little")
-                            for i in range(0, len(value), 8)
-                        ]
+                        value = [int.from_bytes(value[i : i + 8], "little") for i in range(0, len(value), 8)]
                     case "i8":
                         # bytes are actually i8s
-                        value = [
-                            int.from_bytes(value[i : i + 1], "little", signed=True)
-                            for i in range(0, len(value))
-                        ]
+                        value = [int.from_bytes(value[i : i + 1], "little", signed=True) for i in range(0, len(value))]
                     case "i16":
                         # bytes are actually i16s
-                        value = [
-                            int.from_bytes(value[i : i + 2], "little", signed=True)
-                            for i in range(0, len(value))
-                        ]
+                        value = [int.from_bytes(value[i : i + 2], "little", signed=True) for i in range(0, len(value))]
                     case "i32":
                         # bytes are actually i32s
-                        value = [
-                            int.from_bytes(value[i : i + 4], "little", signed=True)
-                            for i in range(0, len(value), 4)
-                        ]
+                        value = [int.from_bytes(value[i : i + 4], "little", signed=True) for i in range(0, len(value), 4)]
                     case "i64":
                         # bytes are actually i64s
-                        value = [
-                            int.from_bytes(value[i : i + 8], "little", signed=True)
-                            for i in range(0, len(value), 8)
-                        ]
+                        value = [int.from_bytes(value[i : i + 8], "little", signed=True) for i in range(0, len(value), 8)]
                     case _:
                         # unknown decode type, shouldn't happen
                         if escape:
@@ -461,14 +436,10 @@ def read_der(buf):
                         data["value"] = read_der(buf)
                 else:
                     # nah, just hex
-                    data["value"] = hex(int.from_bytes(buf.readunit()))[2:].zfill(
-                        (bit_length + 7) // 8
-                    )
+                    data["value"] = hex(int.from_bytes(buf.readunit()))[2:].zfill((bit_length + 7) // 8)
             else:
                 # unaligned, save as bits
-                data["value"] = hex(int.from_bytes(buf.readunit()) >> skip)[2:].zfill(
-                    (bit_length + 7) // 8
-                )
+                data["value"] = hex(int.from_bytes(buf.readunit()) >> skip)[2:].zfill((bit_length + 7) // 8)
         case 0x04:
             data["type"] = "OCTET STRING"
 
@@ -541,9 +512,7 @@ def read_der(buf):
                     + "Z"
                 )
             else:
-                data["value"] = datetime.strptime(
-                    time_string, "%Y%m%d%H%M%S"
-                ).isoformat()
+                data["value"] = datetime.strptime(time_string, "%Y%m%d%H%M%S").isoformat()
         case 0x1e:
             data["type"] = "BMPString"
             data["value"] = buf.readunit().decode("utf-16be")
@@ -580,9 +549,7 @@ def read_der(buf):
         and data["value"][0]["value"]["raw"] == "1.3.6.1.4.1.11129.2.1.30"
     ):
         # Android Google specific attestation field, which contains information about the device
-        data["value"][1]["parsed"] = read_cbor(
-            Buf(bytes.fromhex(data["value"][1]["value"]))
-        )
+        data["value"][1]["parsed"] = read_cbor(Buf(bytes.fromhex(data["value"][1]["value"])))
 
     buf.skipunit()
     buf.popunit()
@@ -658,9 +625,7 @@ def unraw(i, width, choices, short=False):
 # read big integer for PGP
 def read_pgp_mpi(buf):
     bit_length = buf.ru16()
-    return int.from_bytes(buf.read((bit_length + 7) // 8), "big") & (
-        (1 << bit_length) - 1
-    )
+    return int.from_bytes(buf.read((bit_length + 7) // 8), "big") & ((1 << bit_length) - 1)
 
 
 # read PGP hashed/unhashed subpacket
@@ -892,9 +857,7 @@ def _read_pgp(buf, fake=None):
                 case 3:
                     buf.skip(1)
                     data["type"] = unraw(buf.ru8(), 1, PGP_SIGNATURE_TYPES)
-                    data["created-at"] = datetime.fromtimestamp(
-                        buf.ru32(), timezone.utc
-                    ).isoformat()
+                    data["created-at"] = datetime.fromtimestamp(buf.ru32(), timezone.utc).isoformat()
 
                     data["key-id"] = buf.rh(8)
 
@@ -968,9 +931,7 @@ def _read_pgp(buf, fake=None):
                             data["t"] = buf.ru8()
                             data["p"] = buf.ru8()
                             c = buf.ru8()
-                            data["memory"] = (
-                                (16 + (c & 0x0f)) << ((c >> 4) + 6)
-                            ) * 1024
+                            data["memory"] = ((16 + (c & 0x0f)) << ((c >> 4) + 6)) * 1024
                         case _:
                             packet["unknown"] = True
                 case _:
@@ -1002,17 +963,13 @@ def _read_pgp(buf, fake=None):
             algorithm = None
             match data["version"]:
                 case 3:
-                    data["created-at"] = datetime.fromtimestamp(
-                        buf.ru32(), timezone.utc
-                    ).isoformat()
+                    data["created-at"] = datetime.fromtimestamp(buf.ru32(), timezone.utc).isoformat()
                     data["expiry-days"] = buf.ru16()
                     algorithm = buf.ru8()
 
                     data["algorithm"] = unraw(algorithm, 1, PGP_PUBLIC_KEYS)
                 case 4:
-                    data["created-at"] = datetime.fromtimestamp(
-                        buf.ru32(), timezone.utc
-                    ).isoformat()
+                    data["created-at"] = datetime.fromtimestamp(buf.ru32(), timezone.utc).isoformat()
                     algorithm = buf.ru8()
 
                     data["algorithm"] = unraw(algorithm, 1, PGP_PUBLIC_KEYS)
@@ -1068,9 +1025,7 @@ def _read_pgp(buf, fake=None):
             packet["tag"] = "Compressed Data"
 
             method = buf.ru8()
-            data["method"] = unraw(
-                method, 1, {0: "Uncompressed", 1: "ZIP", 2: "ZLIB", 3: "BZip2"}
-            )
+            data["method"] = unraw(method, 1, {0: "Uncompressed", 1: "ZIP", 2: "ZLIB", 3: "BZip2"})
 
             content = buf.readunit()
             match method:
@@ -1121,9 +1076,7 @@ def _read_pgp(buf, fake=None):
                             i += 1
 
                         data["content"] = {}
-                        data["content"]["json"] = json.loads(
-                            content[:i].replace(b"\x1f", b"").decode("utf-8")
-                        )
+                        data["content"]["json"] = json.loads(content[:i].replace(b"\x1f", b"").decode("utf-8"))
                         data["content"]["signature"] = read_pgp(Buf(content[i + 1 :]))
                     else:
                         data["content"] = content.hex()
@@ -1186,9 +1139,7 @@ def read_cbor(buf):
             minor = buf.ru64()
     elif minor == 31:
         if major == 7:
-            raise ValueError(
-                "CBOR indefinite length end outside of indefinite length context"
-            )
+            raise ValueError("CBOR indefinite length end outside of indefinite length context")
         else:
             minor = None
     elif minor > 27:
@@ -1434,9 +1385,7 @@ def read_bencode(buf, blob_mode=False):
                 case "pieces":
                     elems[key] = read_bencode(buf, True)
                 case "creation date":
-                    elems[key] = datetime.fromtimestamp(
-                        read_bencode(buf), timezone.utc
-                    ).isoformat()
+                    elems[key] = datetime.fromtimestamp(read_bencode(buf), timezone.utc).isoformat()
                 case _:
                     elems[key] = read_bencode(buf)
 
@@ -1498,9 +1447,7 @@ def read_nbt(buf, has_name=True, tag=None, depth=1):
             value = [buf.ri64() for i in range(0, buf.ru32())]
         case _:
             if has_name:
-                raise ValueError(
-                    f"Unknown tag 0x{hex(tag)[2:].zfill(2)} with name '{name}'"
-                )
+                raise ValueError(f"Unknown tag 0x{hex(tag)[2:].zfill(2)} with name '{name}'")
             else:
                 raise ValueError(f"Unknown tag 0x{hex(tag)[2:].zfill(2)}")
 
@@ -1615,9 +1562,7 @@ def tempfd():
 
 
 def strip_url(url):
-    if match := re.match(
-        r"^(/wp-content/.+?/[^/]+)-\d+x\d+(\.[A-Za-z0-9]+)$", url.path
-    ):
+    if match := re.match(r"^(/wp-content/.+?/[^/]+)-\d+x\d+(\.[A-Za-z0-9]+)$", url.path):
         url = url._replace(path="".join(match.groups()))
 
     if url.netloc == "static.wixstatic.com":

@@ -64,15 +64,11 @@ class Buf(object):
 
         if self.unit is not None:
             self.unit = max(self.unit - length, 0)
-            assert self.unit >= 0, (
-                f"unit overread by {-self.unit} byte{'s' if self.unit != -1 else ''}"
-            )
+            assert self.unit >= 0, f"unit overread by {-self.unit} byte{'s' if self.unit != -1 else ''}"
         self.seek(length, 1)
 
     def _checkunit(self):
-        assert self.unit >= 0, (
-            f"unit overread by {-self.unit} byte{'s' if self.unit != -1 else ''}"
-        )
+        assert self.unit >= 0, f"unit overread by {-self.unit} byte{'s' if self.unit != -1 else ''}"
 
     def setunit(self, length):
         self.unit = length
@@ -156,11 +152,7 @@ class Buf(object):
                 break
 
             if c[0] in (0x0a, 0x0d):
-                if (
-                    self.peek(1) != b""
-                    and self.peek(1)[0] in (0x0a, 0x0d)
-                    and self.peek(1) != c
-                ):
+                if self.peek(1) != b"" and self.peek(1)[0] in (0x0a, 0x0d) and self.peek(1) != c:
                     self.skip(1)
                 break
 
@@ -208,9 +200,7 @@ class Buf(object):
     def search(self, s, buf_length=1 << 24):
         buf = b""
         while True:
-            chunk = self.read(
-                min(buf_length, self.unit if self.unit else self.available())
-            )
+            chunk = self.read(min(buf_length, self.unit if self.unit else self.available()))
             buf += chunk
 
             if (self.unit is not None and self.unit <= 0) or len(chunk) == 0:

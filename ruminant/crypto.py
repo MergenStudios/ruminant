@@ -94,12 +94,7 @@ except Exception:
         iT0 = []
         for i in range(256):
             s = iSBOX[i]
-            t = (
-                (gmul(s, 0x0e) << 24)
-                | (gmul(s, 0x09) << 16)
-                | (gmul(s, 0x0d) << 8)
-                | gmul(s, 0x0b)
-            )
+            t = (gmul(s, 0x0e) << 24) | (gmul(s, 0x09) << 16) | (gmul(s, 0x0d) << 8) | gmul(s, 0x0b)
             iT0.append(t & 0xffffffff)
 
         iT1 = [((x << 24) | (x >> 8)) & 0xffffffff for x in iT0]
@@ -184,10 +179,7 @@ except Exception:
 
             flat_state = b"".join([x.to_bytes(4, "big") for x in s])
             for i in range(16):
-                res.append(
-                    self.SBOX[flat_state[indices[i]]]
-                    ^ (rk[i // 4] >> (24 - 8 * (i % 4)) & 0xff)
-                )
+                res.append(self.SBOX[flat_state[indices[i]]] ^ (rk[i // 4] >> (24 - 8 * (i % 4)) & 0xff))
 
             return bytes(res)
 
@@ -248,10 +240,7 @@ except Exception:
 
             flat_state = b"".join([x.to_bytes(4, "big") for x in s])
             for i in range(16):
-                res.append(
-                    self.iSBOX[flat_state[indices[i]]]
-                    ^ (rk[i // 4] >> (24 - 8 * (i % 4)) & 0xff)
-                )
+                res.append(self.iSBOX[flat_state[indices[i]]] ^ (rk[i // 4] >> (24 - 8 * (i % 4)) & 0xff))
 
             return bytes(res)
 
@@ -281,9 +270,7 @@ def aes_xts_plain64(K1, K2, sector_size):
                     algorithms.AES(K1 + K2),
                     modes.XTS(((i + offset) // 512).to_bytes(16, "little")),
                 ).decryptor()
-                plaintext += (
-                    dec.update(ciphertext[i : i + sector_size]) + dec.finalize()
-                )
+                plaintext += dec.update(ciphertext[i : i + sector_size]) + dec.finalize()
 
             return plaintext
         except Exception:
@@ -352,9 +339,7 @@ class CryptoBuf(object):
     def _decrypt(self, page):
         if page not in self._cache:
             self._file.seek(page)
-            self._cache[page] = self._decrypt_function(
-                page, self._file.read(self._page_size)
-            )
+            self._cache[page] = self._decrypt_function(page, self._file.read(self._page_size))
 
     def write(self, data):
         raise NotImplementedError()
@@ -445,14 +430,10 @@ def chacha20(msg, key, nonce, counter=1):
 
     if len(nonce) == 8:
         for i in range(counter, (len(msg) + 63) // 64 + counter):
-            ks += chacha_block(
-                b"expand 32-byte k" + key + i.to_bytes(8, "little") + nonce
-            )
+            ks += chacha_block(b"expand 32-byte k" + key + i.to_bytes(8, "little") + nonce)
     else:
         for i in range(counter, (len(msg) + 63) // 64 + counter):
-            ks += chacha_block(
-                b"expand 32-byte k" + key + i.to_bytes(4, "little") + nonce
-            )
+            ks += chacha_block(b"expand 32-byte k" + key + i.to_bytes(4, "little") + nonce)
 
     return bytes([x ^ k for x, k in zip(msg, ks[: len(msg)])])
 
@@ -674,17 +655,10 @@ def aes_cbc_pkcs7(key, iv, input_text, decrypt=True):
 
     if decrypt:
         for i in range(16, len(input_text), 16):
-            output_text += bytes([
-                x ^ y for x, y in zip(input_text[i - 16 : i], f(input_text[i : i + 16]))
-            ])
+            output_text += bytes([x ^ y for x, y in zip(input_text[i - 16 : i], f(input_text[i : i + 16]))])
     else:
         for i in range(16, len(input_text), 16):
-            output_text += f(
-                bytes([
-                    x ^ y
-                    for x, y in zip(input_text[i - 16 : i], input_text[i : i + 16])
-                ])
-            )
+            output_text += f(bytes([x ^ y for x, y in zip(input_text[i - 16 : i], input_text[i : i + 16])]))
 
     padding = output_text[-1]
     assert padding > 0 and padding <= 16, "invalid padding"

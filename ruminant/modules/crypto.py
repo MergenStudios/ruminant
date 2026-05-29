@@ -75,11 +75,7 @@ class PgpModule(module.RuminantModule):
     desc = "Binary or armored PGP files."
 
     def identify(buf, ctx):
-        if (
-            buf.available() > 4
-            and buf.pu8() in (0x85, 0x89)
-            and buf.peek(4)[3] in (0x03, 0x04)
-        ):
+        if buf.available() > 4 and buf.pu8() in (0x85, 0x89) and buf.peek(4)[3] in (0x03, 0x04):
             return True
 
         return buf.peek(15) == b"-----BEGIN PGP "
@@ -98,10 +94,7 @@ class PgpModule(module.RuminantModule):
                 while True:
                     line = self.buf.rl()
 
-                    if (
-                        self.buf.available() == 0
-                        or line == b"-----BEGIN PGP SIGNATURE-----"
-                    ):
+                    if self.buf.available() == 0 or line == b"-----BEGIN PGP SIGNATURE-----":
                         break
 
                     message += line + b"\n"
@@ -145,9 +138,7 @@ class KdbxModule(module.RuminantModule):
         return buf.peek(8) == b"\x03\xd9\xa2\x9ag\xfbK\xb5"
 
     def walk_document(self, document, f):
-        if "text" in document and document.get("attributes", {}).get(
-            "Protected", False
-        ):
+        if "text" in document and document.get("attributes", {}).get("Protected", False):
             document["text"] = {
                 "raw": document["text"],
                 "decrypted": utils.decode(f(base64.b64decode(document["text"]))),
@@ -200,9 +191,7 @@ class KdbxModule(module.RuminantModule):
                     }
                 case 0x03:
                     field["type"] = "Compression algorithm"
-                    field["algorithm"] = utils.unraw(
-                        self.buf.ru32l(), 4, {0: "No compression", 1: "GZip"}
-                    )
+                    field["algorithm"] = utils.unraw(self.buf.ru32l(), 4, {0: "No compression", 1: "GZip"})
                 case 0x04:
                     field["type"] = "Master salt/seed"
                     field["salt"] = self.buf.rh(32)
@@ -259,15 +248,11 @@ class KdbxModule(module.RuminantModule):
                                     entry["type"] = "bytes"
                                     entry["data"] = self.buf.rh(self.buf.unit)
                                 case _:
-                                    entry["type"] = (
-                                        f"Unknown (0x{hex(typ2)[2:].zfill(2)})"
-                                    )
+                                    entry["type"] = f"Unknown (0x{hex(typ2)[2:].zfill(2)})"
 
                             match entry["name"], entry["type"]:
                                 case "$UUID", "bytes":
-                                    entry["data"] = utils.to_uuid(
-                                        bytes.fromhex(entry["data"])
-                                    )
+                                    entry["data"] = utils.to_uuid(bytes.fromhex(entry["data"]))
                                     entry["data"] = {
                                         "raw": entry["data"],
                                         "name": {
@@ -323,9 +308,7 @@ class KdbxModule(module.RuminantModule):
 
                     match entry["name"]:
                         case "$UUID":
-                            mode = {"Argon2d": "2d", "Argon2id": "2id"}.get(
-                                entry["data"]["name"]
-                            )
+                            mode = {"Argon2d": "2d", "Argon2id": "2id"}.get(entry["data"]["name"])
                         case "I" | "M" | "P" | "S" | "V":
                             params[entry["name"]] = entry["data"]
             elif field["type"] == "Master salt/seed":
@@ -350,9 +333,7 @@ class KdbxModule(module.RuminantModule):
             and compression_algorithm in (None, "gzip")
         ):
             meta["key"]["can-decrypt"] = True
-            R = hashlib.sha256(
-                hashlib.sha256(secrets.get(meta["hmac-sha256"]).encode("utf8")).digest()
-            ).digest()
+            R = hashlib.sha256(hashlib.sha256(secrets.get(meta["hmac-sha256"]).encode("utf8")).digest()).digest()
             T = crypto.argon2(
                 R,
                 bytes.fromhex(params["S"]),
@@ -367,9 +348,7 @@ class KdbxModule(module.RuminantModule):
         is_correct = False
         if T is not None:
             decyption_key = hashlib.sha256(master_seed + T).digest()
-            header_hmac_key = hashlib.sha512(
-                b"\xff" * 8 + hashlib.sha512(master_seed + T + b"\x01").digest()
-            ).digest()
+            header_hmac_key = hashlib.sha512(b"\xff" * 8 + hashlib.sha512(master_seed + T + b"\x01").digest()).digest()
             header_hmac = hmac.digest(header_hmac_key, header_data, "sha256")
             is_correct = header_hmac.hex() == meta["hmac-sha256"]
 
@@ -388,12 +367,9 @@ class KdbxModule(module.RuminantModule):
 
                 block_hmac = hmac.digest(
                     hashlib.sha512(
-                        meta["block-count"].to_bytes(8, "little")
-                        + hashlib.sha512(master_seed + T + b"\x01").digest()
+                        meta["block-count"].to_bytes(8, "little") + hashlib.sha512(master_seed + T + b"\x01").digest()
                     ).digest(),
-                    meta["block-count"].to_bytes(8, "little")
-                    + block["length"].to_bytes(4, "little")
-                    + content,
+                    meta["block-count"].to_bytes(8, "little") + block["length"].to_bytes(4, "little") + content,
                     "sha256",
                 )
 
@@ -447,16 +423,12 @@ class KdbxModule(module.RuminantModule):
                             True,
                         )
 
-                        inner_encryption_algorithm = {"ChaCha20": "chacha20"}.get(
-                            entry["payload"]["encryption-algorithm"]
-                        )
+                        inner_encryption_algorithm = {"ChaCha20": "chacha20"}.get(entry["payload"]["encryption-algorithm"])
                     case "Inner encryption key":
                         inner_key = buf.read(buf.unit)
                         entry["payload"]["key"] = inner_key.hex()
                     case "Binary content":
-                        entry["payload"]["flags"] = utils.unpack_flags(
-                            buf.ru8(), ((0, "binary"),)
-                        )
+                        entry["payload"]["flags"] = utils.unpack_flags(buf.ru8(), ((0, "binary"),))
 
                         with buf.subunit():
                             entry["payload"]["content"] = chew(buf)
@@ -491,18 +463,10 @@ class KdbxModule(module.RuminantModule):
                         keystream = b""
                         for i in range(index // 64, (index + len(x) + 63) // 64):
                             keystream += crypto.chacha_block(
-                                b"expand 32-byte k"
-                                + inner_key[:32]
-                                + i.to_bytes(4, "little")
-                                + inner_key[32:44]
+                                b"expand 32-byte k" + inner_key[:32] + i.to_bytes(4, "little") + inner_key[32:44]
                             )
 
-                        payload = bytes([
-                            c ^ k
-                            for c, k in zip(
-                                x, keystream[index % 64 : (index % 64) + len(x)]
-                            )
-                        ])
+                        payload = bytes([c ^ k for c, k in zip(x, keystream[index % 64 : (index % 64) + len(x)])])
                         index += len(x)
                         return payload
 
@@ -532,10 +496,7 @@ class AgeModule(module.RuminantModule):
     desc = "age encrypted files including the tlock extension."
 
     def identify(buf, ctx):
-        return (
-            buf.peek(34) == b"-----BEGIN AGE ENCRYPTED FILE-----"
-            or buf.peek(20) == b"age-encryption.org/v"
-        )
+        return buf.peek(34) == b"-----BEGIN AGE ENCRYPTED FILE-----" or buf.peek(20) == b"age-encryption.org/v"
 
     def chew(self):
         meta = {}
@@ -573,9 +534,7 @@ class AgeModule(module.RuminantModule):
                     line = self.buf.rl()
                     if line.startswith(b"---"):
                         header_length = pos + 3
-                        meta["data"]["header-mac"] = {
-                            "value": base64.b64decode(line[4:] + b"==").hex()
-                        }
+                        meta["data"]["header-mac"] = {"value": base64.b64decode(line[4:] + b"==").hex()}
                         break
 
                     stanza["type"] = utils.decode(line).split(" ")[1]
@@ -585,9 +544,7 @@ class AgeModule(module.RuminantModule):
                         case "X25519":
                             stanza["arguments"]["ephemeral-share"] = args[0]
                         case "scrypt":
-                            stanza["arguments"]["salt"] = base64.b64decode(
-                                args[0] + "=="
-                            ).hex()
+                            stanza["arguments"]["salt"] = base64.b64decode(args[0] + "==").hex()
                             stanza["arguments"]["work"] = 1 << int(args[1])
                         case "tlock":
                             stanza["arguments"]["round"] = int(args[0])
@@ -597,12 +554,8 @@ class AgeModule(module.RuminantModule):
                                 chain = AGE_DRAND_CHAINS[stanza["arguments"]["chain"]]
                                 stanza["parsed"] = {}
                                 stanza["parsed"]["chain-name"] = chain["name"]
-                                stanza["parsed"]["decryption-time"] = (
-                                    utils.unix_to_date(
-                                        chain["genesis"]
-                                        + chain["period"]
-                                        * (stanza["arguments"]["round"] - 1)
-                                    )
+                                stanza["parsed"]["decryption-time"] = utils.unix_to_date(
+                                    chain["genesis"] + chain["period"] * (stanza["arguments"]["round"] - 1)
                                 )
                         case _:
                             stanza["arguments"] = args
@@ -620,9 +573,7 @@ class AgeModule(module.RuminantModule):
                 for stanza in meta["data"]["stanzas"]:
                     match stanza["type"]:
                         case "X25519":
-                            name = hashlib.sha256(
-                                stanza["arguments"]["ephemeral-share"].encode("utf-8")
-                            ).hexdigest()
+                            name = hashlib.sha256(stanza["arguments"]["ephemeral-share"].encode("utf-8")).hexdigest()
                             key = secrets.get(name)
 
                             stanza["key"] = {"name": name, "found": key is not None}
@@ -631,42 +582,23 @@ class AgeModule(module.RuminantModule):
                                     stanza["key"]["correct"] = False
                                 else:
                                     data_part = key.split("1")[-1][:-6].lower()
-                                    words = [
-                                        "qpzry9x8gf2tvdw0s3jn54khce6mua7l".find(c)
-                                        for c in data_part
-                                    ]
-                                    priv = bytes(
-                                        crypto.bech32_convertbits(
-                                            words, 5, 8, pad=False
-                                        )
-                                    )
+                                    words = ["qpzry9x8gf2tvdw0s3jn54khce6mua7l".find(c) for c in data_part]
+                                    priv = bytes(crypto.bech32_convertbits(words, 5, 8, pad=False))
 
                                     pub = crypto.curve25519(b"\x09" + bytes(31), priv)
                                     words = crypto.bech32_convertbits(pub, 8, 5)
-                                    checksum = crypto.bech32_create_checksum(
-                                        "age", words
-                                    )
-                                    encoded_data = "".join([
-                                        "qpzry9x8gf2tvdw0s3jn54khce6mua7l"[i]
-                                        for i in words + checksum
-                                    ])
+                                    checksum = crypto.bech32_create_checksum("age", words)
+                                    encoded_data = "".join(["qpzry9x8gf2tvdw0s3jn54khce6mua7l"[i] for i in words + checksum])
                                     recipient = "age1" + encoded_data
                                     stanza["recipient"] = recipient
 
                                     shared_secret = crypto.curve25519(
-                                        base64.b64decode(
-                                            stanza["arguments"]["ephemeral-share"]
-                                            + "==="
-                                        ),
+                                        base64.b64decode(stanza["arguments"]["ephemeral-share"] + "==="),
                                         priv,
                                     )
                                     wrap_key = crypto.hkdf_sha256(
                                         shared_secret,
-                                        salt=base64.b64decode(
-                                            stanza["arguments"]["ephemeral-share"]
-                                            + "==="
-                                        )
-                                        + pub,
+                                        salt=base64.b64decode(stanza["arguments"]["ephemeral-share"] + "===") + pub,
                                         info=b"age-encryption.org/v1/X25519",
                                         length=32,
                                     )
@@ -691,9 +623,7 @@ class AgeModule(module.RuminantModule):
                                     case "int":
                                         data += v.to_bytes(8, "little", signed=True)
                                     case "str":
-                                        data += len(v).to_bytes(4, "little") + v.encode(
-                                            "utf-8"
-                                        )
+                                        data += len(v).to_bytes(4, "little") + v.encode("utf-8")
 
                             name = hashlib.sha256(data).hexdigest()
                             key = secrets.get(name)
@@ -703,8 +633,7 @@ class AgeModule(module.RuminantModule):
                             if key is not None:
                                 wrap_key = hashlib.scrypt(
                                     key.encode("utf-8"),
-                                    salt=b"age-encryption.org/v1/scrypt"
-                                    + bytes.fromhex(stanza["arguments"]["salt"]),
+                                    salt=b"age-encryption.org/v1/scrypt" + bytes.fromhex(stanza["arguments"]["salt"]),
                                     n=stanza["arguments"]["work"],
                                     r=8,
                                     p=1,
@@ -731,21 +660,13 @@ class AgeModule(module.RuminantModule):
                     meta["data"]["file-key"] = file_key.hex()
                     with self.buf:
                         self.buf.seek(0)
-                        header_key = crypto.hkdf_sha256(
-                            file_key, info=b"header", length=32
-                        )
-                        header_hmac = hmac.new(
-                            header_key, self.buf.read(header_length), hashlib.sha256
-                        ).hexdigest()
-                        meta["data"]["header-mac"]["correct"] = (
-                            meta["data"]["header-mac"]["value"] == header_hmac
-                        )
+                        header_key = crypto.hkdf_sha256(file_key, info=b"header", length=32)
+                        header_hmac = hmac.new(header_key, self.buf.read(header_length), hashlib.sha256).hexdigest()
+                        meta["data"]["header-mac"]["correct"] = meta["data"]["header-mac"]["value"] == header_hmac
                         if not meta["data"]["header-mac"]["correct"]:
                             meta["data"]["header-mac"]["actual"] = header_hmac
 
-                    payload_key = crypto.hkdf_sha256(
-                        file_key, salt=nonce, info=b"payload", length=32
-                    )
+                    payload_key = crypto.hkdf_sha256(file_key, salt=nonce, info=b"payload", length=32)
                     fd = utils.tempfd()
                     counter = 0
                     while self.buf.available() > 0:
@@ -754,8 +675,7 @@ class AgeModule(module.RuminantModule):
                         block = crypto.chacha20_poly1305(
                             block,
                             payload_key,
-                            counter.to_bytes(11, "big")
-                            + (b"\x00" if self.buf.available() > 0 else b"\x01"),
+                            counter.to_bytes(11, "big") + (b"\x00" if self.buf.available() > 0 else b"\x01"),
                             tag,
                         )
                         fd.write(block)
@@ -765,9 +685,7 @@ class AgeModule(module.RuminantModule):
                     meta["data"]["payload"] = chew(fd)
 
                 else:
-                    meta["data"]["block-count"] = (
-                        self.buf.available() + 65536 + 15 - 16
-                    ) // (65536 + 16)
+                    meta["data"]["block-count"] = (self.buf.available() + 65536 + 15 - 16) // (65536 + 16)
                     self.buf.skip(self.buf.available())
             case _:
                 meta["unknown"] = True
@@ -847,9 +765,7 @@ class LuksModule(module.RuminantModule):
 
                 keys = {}
                 for index, keyslot in meta["json"].get("keyslots", {}).items():
-                    blob = keyslot["kdf"]["type"].encode("utf-8") + base64.b64decode(
-                        keyslot["kdf"].get("salt")
-                    )
+                    blob = keyslot["kdf"]["type"].encode("utf-8") + base64.b64decode(keyslot["kdf"].get("salt"))
 
                     try:
                         self.buf.seek(keyslot["area"]["offset"])
@@ -873,11 +789,7 @@ class LuksModule(module.RuminantModule):
 
                     if index in keys and segment.get("encryption") == "aes-xts-plain64":
                         self.buf.seek(int(segment["offset"]))
-                        with self.buf.sub(
-                            segment["size"]
-                            if segment["size"] != "dynamic"
-                            else self.buf.available()
-                        ):
+                        with self.buf.sub(segment["size"] if segment["size"] != "dynamic" else self.buf.available()):
                             buf = crypto.CryptoBuf(
                                 self.buf,
                                 crypto.aes_xts_plain64(
@@ -1008,8 +920,6 @@ class OpenSshPrivateKeyModule(module.RuminantModule):
                 meta["unknown"] = True
                 return meta
         meta["data"]["nkeys"] = self.ibuf.ru32()
-        meta["data"]["public-keys"] = [
-            self.rb().hex() for i in range(0, meta["data"]["nkeys"])
-        ]
+        meta["data"]["public-keys"] = [self.rb().hex() for i in range(0, meta["data"]["nkeys"])]
 
         return meta

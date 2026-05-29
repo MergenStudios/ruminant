@@ -145,9 +145,7 @@ class IsoModule(module.RuminantModule):
 
             if version in (0, 1):
                 atom["data"]["creation-time"] = utils.mp4_time_to_iso(creation_time)
-                atom["data"]["modification-time"] = utils.mp4_time_to_iso(
-                    modification_time
-                )
+                atom["data"]["modification-time"] = utils.mp4_time_to_iso(modification_time)
                 atom["data"]["timescale"] = timescale
                 atom["data"]["duration"] = duration
 
@@ -184,9 +182,7 @@ class IsoModule(module.RuminantModule):
 
             if version in (0, 1):
                 atom["data"]["creation-time"] = utils.mp4_time_to_iso(creation_time)
-                atom["data"]["modification-time"] = utils.mp4_time_to_iso(
-                    modification_time
-                )
+                atom["data"]["modification-time"] = utils.mp4_time_to_iso(modification_time)
                 atom["data"]["track-id"] = track_ID
                 atom["data"]["reserved1"] = reserved1
                 atom["data"]["duration"] = duration
@@ -235,9 +231,7 @@ class IsoModule(module.RuminantModule):
 
             if version in (0, 1):
                 atom["data"]["creation-time"] = utils.mp4_time_to_iso(creation_time)
-                atom["data"]["modification-time"] = utils.mp4_time_to_iso(
-                    modification_time
-                )
+                atom["data"]["modification-time"] = utils.mp4_time_to_iso(modification_time)
                 atom["data"]["timescale"] = timescale
                 atom["data"]["duration"] = duration
 
@@ -303,9 +297,7 @@ class IsoModule(module.RuminantModule):
                     atom["data"]["picture-parameter-set-exts"] = []
                     for i in range(0, atom["data"]["picture-parameter-set-ext-count"]):
                         self.buf.pasunit(self.buf.ru16())
-                        atom["data"]["picture-parameter-set-exts"].append(
-                            self.read_h264_nalu()
-                        )
+                        atom["data"]["picture-parameter-set-exts"].append(self.read_h264_nalu())
                         self.buf.sapunit()
         elif typ == "colr":
             if self.mode == "jp2":
@@ -322,16 +314,12 @@ class IsoModule(module.RuminantModule):
                         atom["data"]["transfer-characteristics"] = self.buf.ru16()
                         atom["data"]["matrix-coefficients"] = self.buf.ru16()
                     case "rICC" | "prof":
-                        atom["data"]["icc-profile-data"] = chew(
-                            b"ICC_PROFILE\x00\x00\x00" + self.buf.readunit()
-                        )
+                        atom["data"]["icc-profile-data"] = chew(b"ICC_PROFILE\x00\x00\x00" + self.buf.readunit())
                     case "nclx":
                         atom["data"]["color-primaries"] = self.buf.ru16()
                         atom["data"]["transfer-characteristics"] = self.buf.ru16()
                         atom["data"]["matrix-coefficients"] = self.buf.ru16()
-                        atom["data"]["flags"] = utils.unpack_flags(
-                            self.buf.ru8(), ((7, "full-range"),)
-                        )
+                        atom["data"]["flags"] = utils.unpack_flags(self.buf.ru8(), ((7, "full-range"),))
         elif typ == "pasp":
             atom["data"]["h-spacing"] = self.buf.ru32()
             atom["data"]["v-spacing"] = self.buf.ru32()
@@ -348,17 +336,12 @@ class IsoModule(module.RuminantModule):
             atom["data"]["sample-count"] = self.buf.ru32()
         elif typ == "sgpd":
             atom["data"]["version"] = self.buf.ru8()
-            atom["data"]["flags"] = utils.unpack_flags(
-                self.buf.ru24(), ((0, "variable-length"),)
-            )
+            atom["data"]["flags"] = utils.unpack_flags(self.buf.ru24(), ((0, "variable-length"),))
 
             atom["data"]["grouping-type"] = self.buf.rs(4)
 
             default_length = 0
-            if (
-                atom["data"]["version"] == 1
-                and "variable-length" not in atom["data"]["flags"]["names"]
-            ):
+            if atom["data"]["version"] == 1 and "variable-length" not in atom["data"]["flags"]["names"]:
                 default_length = self.buf.ru32()
 
             entry_count = self.buf.ru32()
@@ -407,9 +390,7 @@ class IsoModule(module.RuminantModule):
             atom["data"]["non-zero"] = sum(self.buf.peek(self.buf.unit)) > 0
             if atom["data"]["non-zero"]:
                 if self.buf.peek(3) == b"Iso":
-                    atom["data"]["gpac-string"] = (
-                        self.buf.readunit().decode("utf-8").rstrip("\x00")
-                    )
+                    atom["data"]["gpac-string"] = self.buf.readunit().decode("utf-8").rstrip("\x00")
                 else:
                     with self.buf.subunit():
                         atom["data"]["content"] = chew(self.buf)
@@ -433,12 +414,8 @@ class IsoModule(module.RuminantModule):
         elif typ == "sidx":
             version = self.read_version(atom)
             atom["data"]["reference-id"] = self.buf.ru32()
-            atom["data"]["earliest-presentation-time"] = int.from_bytes(
-                self.buf.read(4 if version == 0 else 8), "big"
-            )
-            atom["data"]["first-offset"] = int.from_bytes(
-                self.buf.read(4 if version == 0 else 8), "big"
-            )
+            atom["data"]["earliest-presentation-time"] = int.from_bytes(self.buf.read(4 if version == 0 else 8), "big")
+            atom["data"]["first-offset"] = int.from_bytes(self.buf.read(4 if version == 0 else 8), "big")
             atom["data"]["reserved"] = self.buf.rh(2)
             atom["data"]["reference-count"] = self.buf.ru16()
         elif typ == "mfhd":
@@ -472,9 +449,7 @@ class IsoModule(module.RuminantModule):
                 atom["data"]["default-sample-flags"] = self.buf.ru32()
         elif typ == "tfdt":
             version = self.read_version(atom)
-            atom["data"]["base-media-decode-time"] = int.from_bytes(
-                self.buf.read(4 if version == 0 else 8), "big"
-            )
+            atom["data"]["base-media-decode-time"] = int.from_bytes(self.buf.read(4 if version == 0 else 8), "big")
         elif typ == "trun":
             atom["data"]["version"] = self.buf.ru8()
             atom["data"]["flags"] = utils.unpack_flags(
@@ -498,9 +473,7 @@ class IsoModule(module.RuminantModule):
             atom["data"]["longitude"] = self.buf.rfp32()
             atom["data"]["latitude"] = self.buf.rfp32()
             atom["data"]["altitude"] = self.buf.rfp32()
-            atom["data"]["planet"] = (
-                self.buf.readunit().split(b"\x00")[0].decode("utf-8")
-            )
+            atom["data"]["planet"] = self.buf.readunit().split(b"\x00")[0].decode("utf-8")
         elif typ == "hvcC":
             version = self.buf.ru8()
             atom["data"]["version"] = version
@@ -600,22 +573,13 @@ class IsoModule(module.RuminantModule):
 
                             match entry["nalu"]["payload-type"]:
                                 case "user-data-unregistered":
-                                    if (
-                                        self.buf.ph(16)
-                                        == "2ca2de09b51747dbbb55a4fe7fc2fc4e"
-                                    ):
+                                    if self.buf.ph(16) == "2ca2de09b51747dbbb55a4fe7fc2fc4e":
                                         entry["nalu"]["libx265-uuid"] = self.buf.ruuid()
-                                        entry["nalu"]["libx265-string"] = self.buf.rs(
-                                            self.buf.unit
-                                        )
+                                        entry["nalu"]["libx265-string"] = self.buf.rs(self.buf.unit)
                                     else:
-                                        entry["nalu"]["payload"] = self.buf.rh(
-                                            self.buf.unit
-                                        )
+                                        entry["nalu"]["payload"] = self.buf.rh(self.buf.unit)
                                 case _:
-                                    entry["nalu"]["payload"] = self.buf.rh(
-                                        self.buf.unit
-                                    )
+                                    entry["nalu"]["payload"] = self.buf.rh(self.buf.unit)
                                     entry["unknown"] = True
 
                             self.buf.sapunit()
@@ -655,17 +619,13 @@ class IsoModule(module.RuminantModule):
             atom["data"]["composition-end-time"] = self.buf.ru32()
         elif typ == "senc":
             atom["data"]["version"] = self.buf.ru8()
-            atom["data"]["flags"] = utils.unpack_flags(
-                self.buf.ru24(), ((1, "use-subsample-encryption"),)
-            )
+            atom["data"]["flags"] = utils.unpack_flags(self.buf.ru24(), ((1, "use-subsample-encryption"),))
             atom["data"]["sample-count"] = self.buf.ru32()
         elif typ == "frma":
             atom["data"]["original-media-type"] = self.buf.rs(4)
         elif typ == "schm":
             atom["data"]["version"] = self.buf.ru8()
-            atom["data"]["flags"] = utils.unpack_flags(
-                self.buf.ru24(), ((0, "has-uri"),)
-            )
+            atom["data"]["flags"] = utils.unpack_flags(self.buf.ru24(), ((0, "has-uri"),))
             atom["data"]["type"] = self.buf.rs(4)
             atom["data"]["version"] = f"{self.buf.ru16()}.{self.buf.ru16()}"
             if "has-uri" in atom["data"]["flags"]["names"]:
@@ -689,9 +649,7 @@ class IsoModule(module.RuminantModule):
                 atom["data"]["constant-iv"] = self.buf.rh(constant_iv_size)
         elif typ == "mehd":
             version = self.read_version(atom)
-            atom["data"]["fragment-duration"] = (
-                self.buf.ru32() if version == 0 else self.buf.ru64()
-            )
+            atom["data"]["fragment-duration"] = self.buf.ru32() if version == 0 else self.buf.ru64()
         elif typ == "pssh":
             version = self.read_version(atom)
 
@@ -760,9 +718,7 @@ class IsoModule(module.RuminantModule):
                         content = self.buf.read(record_length)
                         match record_type:
                             case 1:
-                                record["data"] = utils.xml_to_dict(
-                                    content.decode("utf16")
-                                )
+                                record["data"] = utils.xml_to_dict(content.decode("utf16"))
                             case _:
                                 record["data"] = content.hex()
 
@@ -775,9 +731,7 @@ class IsoModule(module.RuminantModule):
                             case 1:
                                 atom["data"]["blob"]["algorithm"] = {
                                     "raw": v,
-                                    "name": {0: "Unencrypted", 1: "AES-CTR"}.get(
-                                        v, "Unknown"
-                                    ),
+                                    "name": {0: "Unencrypted", 1: "AES-CTR"}.get(v, "Unknown"),
                                 }
                             case 2:
                                 if "key-ids" not in atom["data"]["blob"]:
@@ -817,9 +771,7 @@ class IsoModule(module.RuminantModule):
             self.buf.popunit()
         elif typ == "pitm":
             version = self.read_version(atom)
-            atom["data"]["item-id"] = (
-                self.buf.ru32() if version > 0 else self.buf.ru16()
-            )
+            atom["data"]["item-id"] = self.buf.ru32() if version > 0 else self.buf.ru16()
         elif typ == "iloc":
             version = self.read_version(atom)
 
@@ -859,9 +811,7 @@ class IsoModule(module.RuminantModule):
                     extent = {}
 
                     if version > 0 and index_size > 0:
-                        extent["index"] = int.from_bytes(
-                            self.buf.read(index_size), "big"
-                        )
+                        extent["index"] = int.from_bytes(self.buf.read(index_size), "big")
 
                     extent["offset"] = int.from_bytes(self.buf.read(offset_size), "big")
                     extent["length"] = int.from_bytes(self.buf.read(length_size), "big")
@@ -898,14 +848,10 @@ class IsoModule(module.RuminantModule):
                     atom["data"]["extension"]["transfer-length"] = self.buf.ru64()
                     count = self.buf.ru8()
                     atom["data"]["extension"]["entry-count"] = count
-                    atom["data"]["extension"]["entries"] = [
-                        self.buf.ru32() for j in range(0, count)
-                    ]
+                    atom["data"]["extension"]["entries"] = [self.buf.ru32() for j in range(0, count)]
 
             if version >= 2:
-                atom["data"]["id"] = (
-                    self.buf.ru16() if version == 2 else self.buf.ru32()
-                )
+                atom["data"]["id"] = self.buf.ru16() if version == 2 else self.buf.ru32()
                 atom["data"]["protection-index"] = self.buf.ru16()
                 item_type = self.buf.rs(4)
                 atom["data"]["type"] = item_type
@@ -925,9 +871,7 @@ class IsoModule(module.RuminantModule):
             version = self.read_version(atom)
             channel_count = self.buf.ru8()
             atom["data"]["channel-count"] = channel_count
-            atom["data"]["channel-bit-depths"] = [
-                self.buf.ru8() for i in range(0, channel_count)
-            ]
+            atom["data"]["channel-bit-depths"] = [self.buf.ru8() for i in range(0, channel_count)]
         elif typ == "av1C":
             temp = self.buf.ru8()
             atom["data"]["version"] = temp & 0x7f
@@ -1051,9 +995,7 @@ class IsoModule(module.RuminantModule):
                         value_length = record_length - key_length - 8
                         record["content"]["value-length"] = value_length
                         record["content"]["name"] = self.buf.rs(key_length)
-                        record["content"]["value"] = self.buf.rs(
-                            value_length, "latin-1"
-                        )
+                        record["content"]["value"] = self.buf.rs(value_length, "latin-1")
 
                     atom["data"]["records"].append(record)
         elif typ == "clap":
@@ -1205,10 +1147,7 @@ class IsoModule(module.RuminantModule):
             if atom["data"]["channel-mapping-family"] != 0:
                 atom["data"]["stream-count"] = self.buf.ru8()
                 atom["data"]["coupled-count"] = self.buf.ru8()
-                atom["data"]["channel-mapping"] = [
-                    self.buf.ru8()
-                    for i in range(0, atom["data"]["output-channel-count"])
-                ]
+                atom["data"]["channel-mapping"] = [self.buf.ru8() for i in range(0, atom["data"]["output-channel-count"])]
         elif typ == "fiel":
             atom["data"]["field-count"] = self.buf.ru8()
             atom["data"]["field-order"] = self.buf.ru8()
@@ -1232,16 +1171,12 @@ class IsoModule(module.RuminantModule):
             # a small standard that the sample is the whole thing
             # see https://cdn.standards.iteh.ai/samples/77752/a17f98e0bb664a939b031b6a969995d9/ISO-IEC-23003-5-2020.pdf
             self.read_version(atom)
-            atom["data"]["flags"] = utils.unpack_flags(
-                self.buf.ru8(), ((0, "little-endian"),)
-            )
+            atom["data"]["flags"] = utils.unpack_flags(self.buf.ru8(), ((0, "little-endian"),))
             atom["data"]["sample-size"] = self.buf.ru8()
         elif typ == "CNCV":
             atom["data"]["version-string"] = self.buf.rs(self.buf.unit)
         elif typ == "CNDM":
-            atom["data"]["values"] = [
-                self.buf.ri16() for i in range(0, self.buf.unit, 2)
-            ]
+            atom["data"]["values"] = [self.buf.ri16() for i in range(0, self.buf.unit, 2)]
         elif typ == "CNTH":
             self.buf.skip(8)
             with self.buf.subunit():
@@ -1481,10 +1416,7 @@ class IsoModule(module.RuminantModule):
                 sample_sizes = [sample_size] * sample_count
             else:
                 temp = self.buf.read(4 * sample_count)
-                sample_sizes = [
-                    int.from_bytes(temp[i : i + 4], "big")
-                    for i in range(0, 4 * sample_count, 4)
-                ]
+                sample_sizes = [int.from_bytes(temp[i : i + 4], "big") for i in range(0, 4 * sample_count, 4)]
 
             self.buf.sapunit()
 
@@ -1496,16 +1428,10 @@ class IsoModule(module.RuminantModule):
 
             if stco_co64["type"] == "stco":
                 temp = self.buf.read(4 * chunk_count)
-                chunk_offsets = [
-                    int.from_bytes(temp[i : i + 4], "big")
-                    for i in range(0, 4 * chunk_count, 4)
-                ]
+                chunk_offsets = [int.from_bytes(temp[i : i + 4], "big") for i in range(0, 4 * chunk_count, 4)]
             else:
                 temp = self.buf.read(8 * chunk_count)
-                chunk_offsets = [
-                    int.from_bytes(temp[i : i + 8], "big")
-                    for i in range(0, 8 * chunk_count, 8)
-                ]
+                chunk_offsets = [int.from_bytes(temp[i : i + 8], "big") for i in range(0, 8 * chunk_count, 8)]
 
             self.buf.sapunit()
 
@@ -1513,10 +1439,7 @@ class IsoModule(module.RuminantModule):
             self.buf.pasunit(stsc["length"])
 
             self.buf.skip(12)
-            entries = [
-                (self.buf.ru32(), self.buf.ru32(), self.buf.ru32())
-                for i in range(0, self.buf.ru32())
-            ]
+            entries = [(self.buf.ru32(), self.buf.ru32(), self.buf.ru32()) for i in range(0, self.buf.ru32())]
 
             entries.append((chunk_count + 1, 1, 1))
             sample_to_offset = []
@@ -1533,9 +1456,7 @@ class IsoModule(module.RuminantModule):
             self.buf.popunit()
 
             stream["sample-count"] = len(sample_to_offset)
-            stream["data"] = self.process_stream(
-                stsd["data"]["atoms"][0], sample_to_offset, sample_sizes
-            )
+            stream["data"] = self.process_stream(stsd["data"]["atoms"][0], sample_to_offset, sample_sizes)
 
             streams.append(stream)
 
@@ -1556,9 +1477,7 @@ class IsoModule(module.RuminantModule):
                 data["first-sample-nals"] = []
                 while self.buf.unit > 0:
                     nalu = {}
-                    nalu["length"] = int.from_bytes(
-                        self.buf.read(nal_length_size), "big"
-                    )
+                    nalu["length"] = int.from_bytes(self.buf.read(nal_length_size), "big")
 
                     self.buf.pasunit(nalu["length"])
 
@@ -1723,12 +1642,8 @@ class IsoModule(module.RuminantModule):
                         tlv["value"]["composition-unit-duration"] = self.buf.ru16()
 
                     if not tlv["value"]["use-timestamps-flag"]:
-                        tlv["value"]["start-decoding-timestamp"] = self.buf.rb(
-                            tlv["value"]["timestamp-length"]
-                        )
-                        tlv["value"]["start-comosition-timestamp"] = self.buf.rb(
-                            tlv["value"]["timestamp-length"]
-                        )
+                        tlv["value"]["start-decoding-timestamp"] = self.buf.rb(tlv["value"]["timestamp-length"])
+                        tlv["value"]["start-comosition-timestamp"] = self.buf.rb(tlv["value"]["timestamp-length"])
             case _:
                 tlv["unknown"] = True
                 tlv["value"]["payload"] = self.buf.rh(self.buf.unit)
@@ -1852,9 +1767,7 @@ class IsoModule(module.RuminantModule):
         if obu["has-size-flag"]:
             length = self.buf.ruleb()
         else:
-            length = (
-                self.buf.unit if self.buf.unit is not None else self.buf.available()
-            )
+            length = self.buf.unit if self.buf.unit is not None else self.buf.available()
 
         obu["length"] = length
 
@@ -2030,9 +1943,7 @@ class MatroskaModule(module.RuminantModule):
         tag_length = self.read_vint()
 
         tag = {}
-        tag["name"], tag["type"] = self.FIELDS.get(
-            tag_id, (f"Unknown ({hex(tag_id)})", "unknown")
-        )
+        tag["name"], tag["type"] = self.FIELDS.get(tag_id, (f"Unknown ({hex(tag_id)})", "unknown"))
 
         tag["length"] = tag_length
 
@@ -2061,12 +1972,7 @@ class MatroskaModule(module.RuminantModule):
             case "date":
                 tag["data"] = (
                     datetime.datetime(2001, 1, 1, tzinfo=datetime.timezone.utc)
-                    + datetime.timedelta(
-                        microseconds=int.from_bytes(
-                            self.buf.readunit(), "big", signed=True
-                        )
-                        / 1000
-                    )
+                    + datetime.timedelta(microseconds=int.from_bytes(self.buf.readunit(), "big", signed=True) / 1000)
                 ).isoformat()
             case "master":
                 if tag_length == 0:
@@ -2216,9 +2122,7 @@ class OggModule(module.RuminantModule):
             if mapping > 0:
                 packet["data"]["stream-count"] = buf.ru8()
                 packet["data"]["coupled-count"] = buf.ru8()
-                packet["data"]["channel-mapping-table"] = [
-                    buf.ru8() for i in range(0, channel_count)
-                ]
+                packet["data"]["channel-mapping-table"] = [buf.ru8() for i in range(0, channel_count)]
         elif buf.peek(8) == b"OpusTags":
             buf.skip(8)
             packet["codec"] = "opus"
@@ -2280,9 +2184,7 @@ class OggModule(module.RuminantModule):
 
 @module.register
 class MpegTsModule(module.RuminantModule):
-    desc = (
-        "MPEG transport stream files like the ones served on the web by M3U8 playlists."
-    )
+    desc = "MPEG transport stream files like the ones served on the web by M3U8 playlists."
 
     def identify(buf, ctx):
         if buf.available() < 188:
@@ -2292,9 +2194,7 @@ class MpegTsModule(module.RuminantModule):
         elif buf.available() == 204:
             return buf.peek(1) == b"\x47" and buf.peek(189)[-1] != b"\x47"
         else:
-            return buf.peek(1) == b"\x47" and (
-                buf.peek(189)[-1] == 0x47 or buf.peek(205)[-1] == 0x47
-            )
+            return buf.peek(1) == b"\x47" and (buf.peek(189)[-1] == 0x47 or buf.peek(205)[-1] == 0x47)
 
     def read_descriptors(self, buf):
         descs = []
@@ -2312,9 +2212,7 @@ class MpegTsModule(module.RuminantModule):
             match desc["tag"]:
                 case 0x48:
                     desc["type"] = "Service Descriptor"
-                    desc["data"]["service-type"] = utils.unraw(
-                        buf.ru8(), 1, {1: "Digital TV", 2: "Radio"}
-                    )
+                    desc["data"]["service-type"] = utils.unraw(buf.ru8(), 1, {1: "Digital TV", 2: "Radio"})
                     desc["data"]["provider"] = buf.rs(buf.ru8())
                     desc["data"]["service"] = buf.rs(buf.ru8())
                 case 0x0a:
@@ -2515,11 +2413,7 @@ class MpegTsModule(module.RuminantModule):
             else:
                 slack[pid] += self.buf.read(left)
 
-            if (
-                self.buf.peek(1) != b"\x47"
-                and self.buf.available() > 16
-                and self.buf.peek(17)[-1] == b"\x47"
-            ):
+            if self.buf.peek(1) != b"\x47" and self.buf.available() > 16 and self.buf.peek(17)[-1] == b"\x47":
                 self.buf.skip(16)
 
         for key, value in slack.items():
@@ -2556,10 +2450,7 @@ class AsfModule(module.RuminantModule):
     desc = "Advanced Systems Format files like WMA or WMV files."
 
     def identify(buf, ctx):
-        return (
-            buf.available() > 16
-            and buf.pguid() == "75b22630-668e-11cf-a6d9-00aa0062ce6c"
-        )
+        return buf.available() > 16 and buf.pguid() == "75b22630-668e-11cf-a6d9-00aa0062ce6c"
 
     def read_object(self):
         obj = {}
@@ -2627,8 +2518,7 @@ class AsfModule(module.RuminantModule):
                 obj["name"] = "Language List"
                 obj["data"]["language-count"] = self.buf.ru16l()
                 obj["data"]["languages"] = [
-                    self.buf.rs(self.buf.ru8(), "utf16")
-                    for i in range(0, obj["data"]["language-count"])
+                    self.buf.rs(self.buf.ru8(), "utf16") for i in range(0, obj["data"]["language-count"])
                 ]
             case "14e6a5cb-c672-4332-8399-a96952065b5a":
                 obj["name"] = "Extended Stream Properties Object"
@@ -2763,75 +2653,33 @@ class AsfModule(module.RuminantModule):
                 match obj["data"]["stream-type"]["name"]:
                     case "Video Media":
                         obj["data"]["type-specific-data"] = {}
-                        obj["data"]["type-specific-data"]["image-width"] = (
-                            self.buf.ru32l()
-                        )
-                        obj["data"]["type-specific-data"]["image-height"] = (
-                            self.buf.ru32l()
-                        )
+                        obj["data"]["type-specific-data"]["image-width"] = self.buf.ru32l()
+                        obj["data"]["type-specific-data"]["image-height"] = self.buf.ru32l()
                         obj["data"]["type-specific-data"]["reserved"] = self.buf.ru8()
-                        obj["data"]["type-specific-data"]["format-data-length"] = (
-                            self.buf.ru16l()
-                        )
+                        obj["data"]["type-specific-data"]["format-data-length"] = self.buf.ru16l()
 
                         obj["data"]["type-specific-data"]["format-data"] = {}
-                        obj["data"]["type-specific-data"]["format-data"][
-                            "format-data-length"
-                        ] = self.buf.ru32l()
-                        obj["data"]["type-specific-data"]["format-data"][
-                            "image-width"
-                        ] = self.buf.ru32l()
-                        obj["data"]["type-specific-data"]["format-data"][
-                            "image-height"
-                        ] = self.buf.ru32l()
-                        obj["data"]["type-specific-data"]["format-data"]["reserved"] = (
-                            self.buf.ru16l()
-                        )
-                        obj["data"]["type-specific-data"]["format-data"][
-                            "bits-per-pixel"
-                        ] = self.buf.ru16l()
-                        obj["data"]["type-specific-data"]["format-data"][
-                            "compression-id"
-                        ] = self.buf.rs(4)
-                        obj["data"]["type-specific-data"]["format-data"][
-                            "image-size"
-                        ] = self.buf.ru32l()
-                        obj["data"]["type-specific-data"]["format-data"][
-                            "horiz-pixels-per-meter"
-                        ] = self.buf.ru32l()
-                        obj["data"]["type-specific-data"]["format-data"][
-                            "vert-pixels-per-meter"
-                        ] = self.buf.ru32l()
-                        obj["data"]["type-specific-data"]["format-data"][
-                            "colors-used"
-                        ] = self.buf.ru32l()
-                        obj["data"]["type-specific-data"]["format-data"][
-                            "important-colors"
-                        ] = self.buf.ru32l()
-                        obj["data"]["type-specific-data"]["format-data"][
-                            "codec-specific-data"
-                        ] = self.buf.rh(self.buf.unit)
+                        obj["data"]["type-specific-data"]["format-data"]["format-data-length"] = self.buf.ru32l()
+                        obj["data"]["type-specific-data"]["format-data"]["image-width"] = self.buf.ru32l()
+                        obj["data"]["type-specific-data"]["format-data"]["image-height"] = self.buf.ru32l()
+                        obj["data"]["type-specific-data"]["format-data"]["reserved"] = self.buf.ru16l()
+                        obj["data"]["type-specific-data"]["format-data"]["bits-per-pixel"] = self.buf.ru16l()
+                        obj["data"]["type-specific-data"]["format-data"]["compression-id"] = self.buf.rs(4)
+                        obj["data"]["type-specific-data"]["format-data"]["image-size"] = self.buf.ru32l()
+                        obj["data"]["type-specific-data"]["format-data"]["horiz-pixels-per-meter"] = self.buf.ru32l()
+                        obj["data"]["type-specific-data"]["format-data"]["vert-pixels-per-meter"] = self.buf.ru32l()
+                        obj["data"]["type-specific-data"]["format-data"]["colors-used"] = self.buf.ru32l()
+                        obj["data"]["type-specific-data"]["format-data"]["important-colors"] = self.buf.ru32l()
+                        obj["data"]["type-specific-data"]["format-data"]["codec-specific-data"] = self.buf.rh(self.buf.unit)
                     case "Audio Media":
                         obj["data"]["type-specific-data"] = {}
                         obj["data"]["type-specific-data"]["codec-id"] = self.buf.ru16l()
-                        obj["data"]["type-specific-data"]["channel-count"] = (
-                            self.buf.ru16l()
-                        )
-                        obj["data"]["type-specific-data"]["samples-per-second"] = (
-                            self.buf.ru32l()
-                        )
-                        obj["data"]["type-specific-data"]["avg-bytes-per-second"] = (
-                            self.buf.ru32l()
-                        )
-                        obj["data"]["type-specific-data"]["block-alignment"] = (
-                            self.buf.ru16l()
-                        )
-                        obj["data"]["type-specific-data"]["bits-per-sample"] = (
-                            self.buf.ru16l()
-                        )
-                        obj["data"]["type-specific-data"]["codec-specific-data"] = (
-                            self.buf.rh(self.buf.ru16l())
-                        )
+                        obj["data"]["type-specific-data"]["channel-count"] = self.buf.ru16l()
+                        obj["data"]["type-specific-data"]["samples-per-second"] = self.buf.ru32l()
+                        obj["data"]["type-specific-data"]["avg-bytes-per-second"] = self.buf.ru32l()
+                        obj["data"]["type-specific-data"]["block-alignment"] = self.buf.ru16l()
+                        obj["data"]["type-specific-data"]["bits-per-sample"] = self.buf.ru16l()
+                        obj["data"]["type-specific-data"]["codec-specific-data"] = self.buf.rh(self.buf.ru16l())
                     case _:
                         obj["data"]["type-specific-data"] = self.buf.rh(self.buf.unit)
                         obj["unknown"] = True
@@ -2846,15 +2694,9 @@ class AsfModule(module.RuminantModule):
                     case "Audio Spread":
                         obj["data"]["ecc-data"] = {}
                         obj["data"]["ecc-data"]["span"] = self.buf.ru8()
-                        obj["data"]["ecc-data"]["virtual-packet-length"] = (
-                            self.buf.ru16l()
-                        )
-                        obj["data"]["ecc-data"]["virtual-channel-length"] = (
-                            self.buf.ru16l()
-                        )
-                        obj["data"]["ecc-data"]["silence-data"] = self.buf.rh(
-                            self.buf.ru16l()
-                        )
+                        obj["data"]["ecc-data"]["virtual-packet-length"] = self.buf.ru16l()
+                        obj["data"]["ecc-data"]["virtual-channel-length"] = self.buf.ru16l()
+                        obj["data"]["ecc-data"]["silence-data"] = self.buf.rh(self.buf.ru16l())
                     case "No Error Correction":
                         obj["data"]["ecc-data"] = self.buf.rh(self.buf.unit)
                     case _:
@@ -2871,9 +2713,7 @@ class AsfModule(module.RuminantModule):
                 obj["data"]["codec-entries"] = []
                 for i in range(0, obj["data"]["codec-entry-count"]):
                     codec = {}
-                    codec["type"] = utils.unraw(
-                        self.buf.ru16l(), 2, {1: "Audio", 2: "Video"}
-                    )
+                    codec["type"] = utils.unraw(self.buf.ru16l(), 2, {1: "Audio", 2: "Video"})
                     codec["name"] = self.buf.rs(self.buf.ru16l() << 1, "utf16")
                     codec["description"] = self.buf.rs(self.buf.ru16l() << 1, "utf16")
                     codec["information"] = self.buf.rh(self.buf.ru16l())
@@ -3047,36 +2887,22 @@ class SwfModule(module.RuminantModule):
                                 shape["move-y"] = self.buf.rsb(shape["move-bits"])
 
                             if shape["has-fill-style0"]:
-                                shape["fill-style0"] = self.buf.rb(
-                                    tag["data"]["fill-bits"]
-                                )
+                                shape["fill-style0"] = self.buf.rb(tag["data"]["fill-bits"])
 
                             if shape["has-fill-style1"]:
-                                shape["fill-style1"] = self.buf.rb(
-                                    tag["data"]["fill-bits"]
-                                )
+                                shape["fill-style1"] = self.buf.rb(tag["data"]["fill-bits"])
 
                             if shape["has-line-style"]:
-                                shape["line-style"] = self.buf.rb(
-                                    tag["data"]["line-bits"]
-                                )
+                                shape["line-style"] = self.buf.rb(tag["data"]["line-bits"])
                         else:
                             shape["edge-type"] = self.buf.rb(1)
                             shape["coord-size"] = self.buf.rb(4) + 2
 
                             if shape["edge-type"] == 0:
-                                shape["control-delta-x"] = self.buf.rsb(
-                                    shape["coord-size"]
-                                )
-                                shape["control-delta-y"] = self.buf.rsb(
-                                    shape["coord-size"]
-                                )
-                                shape["anchor-delta-x"] = self.buf.rsb(
-                                    shape["coord-size"]
-                                )
-                                shape["anchor-delta-y"] = self.buf.rsb(
-                                    shape["coord-size"]
-                                )
+                                shape["control-delta-x"] = self.buf.rsb(shape["coord-size"])
+                                shape["control-delta-y"] = self.buf.rsb(shape["coord-size"])
+                                shape["anchor-delta-x"] = self.buf.rsb(shape["coord-size"])
+                                shape["anchor-delta-y"] = self.buf.rsb(shape["coord-size"])
                             else:
                                 shape["has-x-and-y"] = self.buf.rb(1)
 
@@ -3087,13 +2913,9 @@ class SwfModule(module.RuminantModule):
                                     shape["has-x-or-y"] = self.buf.rb(1)
 
                                     if shape["has-x-or-y"]:
-                                        shape["delta-x"] = self.buf.rsb(
-                                            shape["coord-size"]
-                                        )
+                                        shape["delta-x"] = self.buf.rsb(shape["coord-size"])
                                     else:
-                                        shape["delta-y"] = self.buf.rsb(
-                                            shape["coord-size"]
-                                        )
+                                        shape["delta-y"] = self.buf.rsb(shape["coord-size"])
 
                         tag["data"]["shapes"].append(shape)
 
@@ -3134,9 +2956,7 @@ class SwfModule(module.RuminantModule):
                         tag["data"]["matrix"] = self.read_matrix()
 
                     if tag["data"]["has-color-transform"]:
-                        tag["data"]["color-transform"] = self.read_color_transform(
-                            code == 26
-                        )
+                        tag["data"]["color-transform"] = self.read_color_transform(code == 26)
 
                     if tag["data"]["has-morph-position"]:
                         tag["data"]["morph-position"] = self.buf.ru16l()
@@ -3194,9 +3014,7 @@ class SwfModule(module.RuminantModule):
         meta = {}
         meta["type"] = "swf"
 
-        meta["compression"] = {"FWS": "none", "CWS": "zlib", "ZWS": "lzma"}[
-            self.buf.rs(3)
-        ]
+        meta["compression"] = {"FWS": "none", "CWS": "zlib", "ZWS": "lzma"}[self.buf.rs(3)]
 
         meta["version"] = self.buf.ru8()
         self.version = meta["version"]
@@ -3319,12 +3137,8 @@ class DiracModule(module.RuminantModule):
                         unit["data"]["string"] = self.buf.rs(self.buf.unit)
                     case "sequence-header":
                         unit["data"]["parse-paramets"] = {}
-                        unit["data"]["parse-paramets"]["major-version"] = (
-                            self.buf.riue()
-                        )
-                        unit["data"]["parse-paramets"]["minor-version"] = (
-                            self.buf.riue()
-                        )
+                        unit["data"]["parse-paramets"]["major-version"] = self.buf.riue()
+                        unit["data"]["parse-paramets"]["minor-version"] = self.buf.riue()
                         unit["data"]["parse-paramets"]["profile"] = self.buf.riue()
                         unit["data"]["parse-paramets"]["level"] = self.buf.riue()
 
@@ -3358,63 +3172,36 @@ class DiracModule(module.RuminantModule):
                         )
 
                         unit["data"]["source-parameters"] = {}
-                        unit["data"]["source-parameters"]["custom-dimensions"] = (
-                            self.buf.rb(1)
-                        )
+                        unit["data"]["source-parameters"]["custom-dimensions"] = self.buf.rb(1)
                         if unit["data"]["source-parameters"]["custom-dimensions"]:
-                            unit["data"]["source-parameters"]["frame-width"] = (
-                                self.buf.riue()
-                            )
-                            unit["data"]["source-parameters"]["frame-height"] = (
-                                self.buf.riue()
-                            )
-                        unit["data"]["source-parameters"]["custom-chroma-sampling"] = (
-                            self.buf.rb(1)
-                        )
+                            unit["data"]["source-parameters"]["frame-width"] = self.buf.riue()
+                            unit["data"]["source-parameters"]["frame-height"] = self.buf.riue()
+                        unit["data"]["source-parameters"]["custom-chroma-sampling"] = self.buf.rb(1)
                         if unit["data"]["source-parameters"]["custom-chroma-sampling"]:
-                            unit["data"]["source-parameters"]["chroma-format"] = (
-                                utils.unraw(
-                                    self.buf.riue(),
-                                    1,
-                                    {0x00: "4:4:4", 0x01: "4:2:2", 0x02: "4:2:0"},
-                                    True,
-                                )
+                            unit["data"]["source-parameters"]["chroma-format"] = utils.unraw(
+                                self.buf.riue(),
+                                1,
+                                {0x00: "4:4:4", 0x01: "4:2:2", 0x02: "4:2:0"},
+                                True,
                             )
-                        unit["data"]["source-parameters"]["custom-scan-format"] = (
-                            self.buf.rb(1)
-                        )
+                        unit["data"]["source-parameters"]["custom-scan-format"] = self.buf.rb(1)
                         if unit["data"]["source-parameters"]["custom-scan-format"]:
-                            unit["data"]["source-parameters"]["scan-format"] = (
-                                utils.unraw(
-                                    self.buf.riue(),
-                                    1,
-                                    {0x00: "progressive", 0x01: "interlaced"},
-                                    True,
-                                )
+                            unit["data"]["source-parameters"]["scan-format"] = utils.unraw(
+                                self.buf.riue(),
+                                1,
+                                {0x00: "progressive", 0x01: "interlaced"},
+                                True,
                             )
-                        unit["data"]["source-parameters"]["custom-frame-rate"] = (
-                            self.buf.rb(1)
-                        )
+                        unit["data"]["source-parameters"]["custom-frame-rate"] = self.buf.rb(1)
                         if unit["data"]["source-parameters"]["custom-frame-rate"]:
-                            unit["data"]["source-parameters"]["frame-rate-index"] = (
-                                self.buf.riue()
-                            )
-                            if (
-                                unit["data"]["source-parameters"]["frame-rate-index"]
-                                == 0
-                            ):
-                                unit["data"]["source-parameters"]["frame-rate-num"] = (
-                                    self.buf.riue()
-                                )
-                                unit["data"]["source-parameters"][
-                                    "frame-rate-denom"
-                                ] = self.buf.riue()
+                            unit["data"]["source-parameters"]["frame-rate-index"] = self.buf.riue()
+                            if unit["data"]["source-parameters"]["frame-rate-index"] == 0:
+                                unit["data"]["source-parameters"]["frame-rate-num"] = self.buf.riue()
+                                unit["data"]["source-parameters"]["frame-rate-denom"] = self.buf.riue()
                             else:
                                 (
                                     unit["data"]["source-parameters"]["frame-rate-num"],
-                                    unit["data"]["source-parameters"][
-                                        "frame-rate-denom"
-                                    ],
+                                    unit["data"]["source-parameters"]["frame-rate-denom"],
                                 ) = {
                                     0x01: (24000, 1001),
                                     0x02: (24, 1),
@@ -3427,9 +3214,7 @@ class DiracModule(module.RuminantModule):
                                     0x09: (15000, 1001),
                                     0x0a: (25, 2),
                                 }.get(
-                                    unit["data"]["source-parameters"][
-                                        "frame-rate-index"
-                                    ],
+                                    unit["data"]["source-parameters"]["frame-rate-index"],
                                     (0, 1),
                                 )
                             unit["data"]["source-parameters"]["frame-rate"] = (
@@ -3437,35 +3222,16 @@ class DiracModule(module.RuminantModule):
                                 / unit["data"]["source-parameters"]["frame-rate-denom"]
                             )
 
-                        unit["data"]["source-parameters"][
-                            "custom-pixel-aspect-ratio"
-                        ] = self.buf.rb(1)
-                        if unit["data"]["source-parameters"][
-                            "custom-pixel-aspect-ratio"
-                        ]:
-                            unit["data"]["source-parameters"][
-                                "pixel-aspect-ratio-index"
-                            ] = self.buf.riue()
-                            if (
-                                unit["data"]["source-parameters"][
-                                    "pixel-aspect-ratio-index"
-                                ]
-                                == 0
-                            ):
-                                unit["data"]["source-parameters"][
-                                    "pixel-aspect-ratio-num"
-                                ] = self.buf.riue()
-                                unit["data"]["source-parameters"][
-                                    "pixel-aspect-ratio-denom"
-                                ] = self.buf.riue()
+                        unit["data"]["source-parameters"]["custom-pixel-aspect-ratio"] = self.buf.rb(1)
+                        if unit["data"]["source-parameters"]["custom-pixel-aspect-ratio"]:
+                            unit["data"]["source-parameters"]["pixel-aspect-ratio-index"] = self.buf.riue()
+                            if unit["data"]["source-parameters"]["pixel-aspect-ratio-index"] == 0:
+                                unit["data"]["source-parameters"]["pixel-aspect-ratio-num"] = self.buf.riue()
+                                unit["data"]["source-parameters"]["pixel-aspect-ratio-denom"] = self.buf.riue()
                             else:
                                 (
-                                    unit["data"]["source-parameters"][
-                                        "pixel-aspect-ratio-num"
-                                    ],
-                                    unit["data"]["source-parameters"][
-                                        "pixel-aspect-ratio-denom"
-                                    ],
+                                    unit["data"]["source-parameters"]["pixel-aspect-ratio-num"],
+                                    unit["data"]["source-parameters"]["pixel-aspect-ratio-denom"],
                                 ) = {
                                     0x01: (1, 1),
                                     0x02: (10, 11),
@@ -3474,83 +3240,57 @@ class DiracModule(module.RuminantModule):
                                     0x05: (16, 11),
                                     0x06: (4, 3),
                                 }.get(
-                                    unit["data"]["source-parameters"][
-                                        "pixel-aspect-ratio-index"
-                                    ],
+                                    unit["data"]["source-parameters"]["pixel-aspect-ratio-index"],
                                     (0, 1),
                                 )
 
-                        unit["data"]["source-parameters"]["custom-clean-area"] = (
-                            self.buf.rb(1)
-                        )
+                        unit["data"]["source-parameters"]["custom-clean-area"] = self.buf.rb(1)
                         if unit["data"]["source-parameters"]["custom-clean-area"]:
-                            unit["data"]["source-parameters"]["clean-area-width"] = (
-                                self.buf.riue()
-                            )
-                            unit["data"]["source-parameters"]["clean-area-height"] = (
-                                self.buf.riue()
-                            )
-                            unit["data"]["source-parameters"][
-                                "clean-area-left-offset"
-                            ] = self.buf.riue()
-                            unit["data"]["source-parameters"][
-                                "clean-area-top-offset"
-                            ] = self.buf.riue()
+                            unit["data"]["source-parameters"]["clean-area-width"] = self.buf.riue()
+                            unit["data"]["source-parameters"]["clean-area-height"] = self.buf.riue()
+                            unit["data"]["source-parameters"]["clean-area-left-offset"] = self.buf.riue()
+                            unit["data"]["source-parameters"]["clean-area-top-offset"] = self.buf.riue()
 
-                        unit["data"]["source-parameters"]["custom-signal"] = (
-                            self.buf.rb(1)
-                        )
+                        unit["data"]["source-parameters"]["custom-signal"] = self.buf.rb(1)
                         if unit["data"]["source-parameters"]["custom-signal"]:
-                            unit["data"]["source-parameters"]["signal-index"] = (
-                                self.buf.riue()
-                            )
+                            unit["data"]["source-parameters"]["signal-index"] = self.buf.riue()
 
                             if unit["data"]["source-parameters"]["signal-index"] == 0:
-                                unit["data"]["source-parameters"][
-                                    "signal-luma-offset"
-                                ] = self.buf.riue()
-                                unit["data"]["source-parameters"][
-                                    "signal-luma-excursion"
-                                ] = self.buf.riue()
-                                unit["data"]["source-parameters"][
-                                    "signal-chroma-offset"
-                                ] = self.buf.riue()
-                                unit["data"]["source-parameters"][
-                                    "signal-chroma-excursion"
-                                ] = self.buf.riue()
+                                unit["data"]["source-parameters"]["signal-luma-offset"] = self.buf.riue()
+                                unit["data"]["source-parameters"]["signal-luma-excursion"] = self.buf.riue()
+                                unit["data"]["source-parameters"]["signal-chroma-offset"] = self.buf.riue()
+                                unit["data"]["source-parameters"]["signal-chroma-excursion"] = self.buf.riue()
                             else:
-                                unit["data"]["source-parameters"][
-                                    "signal-luma-offset"
-                                ] = {0x01: 0, 0x02: 16, 0x03: 64, 0x04: 256}.get(
-                                    unit["data"]["source-parameters"]["signal-index"], 0
-                                )
-                                unit["data"]["source-parameters"][
-                                    "signal-luma-excursion"
-                                ] = {0x01: 255, 0x02: 219, 0x03: 876, 0x04: 3504}.get(
-                                    unit["data"]["source-parameters"]["signal-index"], 0
-                                )
-                                unit["data"]["source-parameters"][
-                                    "signal-chroma-offset"
-                                ] = {0x01: 128, 0x02: 128, 0x03: 512, 0x04: 2048}.get(
-                                    unit["data"]["source-parameters"]["signal-index"], 0
-                                )
-                                unit["data"]["source-parameters"][
-                                    "signal-chroma-excursion"
-                                ] = {0x01: 255, 0x02: 224, 0x03: 896, 0x04: 3584}.get(
-                                    unit["data"]["source-parameters"]["signal-index"], 0
-                                )
+                                unit["data"]["source-parameters"]["signal-luma-offset"] = {
+                                    0x01: 0,
+                                    0x02: 16,
+                                    0x03: 64,
+                                    0x04: 256,
+                                }.get(unit["data"]["source-parameters"]["signal-index"], 0)
+                                unit["data"]["source-parameters"]["signal-luma-excursion"] = {
+                                    0x01: 255,
+                                    0x02: 219,
+                                    0x03: 876,
+                                    0x04: 3504,
+                                }.get(unit["data"]["source-parameters"]["signal-index"], 0)
+                                unit["data"]["source-parameters"]["signal-chroma-offset"] = {
+                                    0x01: 128,
+                                    0x02: 128,
+                                    0x03: 512,
+                                    0x04: 2048,
+                                }.get(unit["data"]["source-parameters"]["signal-index"], 0)
+                                unit["data"]["source-parameters"]["signal-chroma-excursion"] = {
+                                    0x01: 255,
+                                    0x02: 224,
+                                    0x03: 896,
+                                    0x04: 3584,
+                                }.get(unit["data"]["source-parameters"]["signal-index"], 0)
 
                         # eww br*t*sh
-                        unit["data"]["source-parameters"]["custom-colour-spec"] = (
-                            self.buf.rb(1)
-                        )
+                        unit["data"]["source-parameters"]["custom-colour-spec"] = self.buf.rb(1)
                         if unit["data"]["source-parameters"]["custom-colour-spec"]:
-                            unit["data"]["source-parameters"]["colour-spec-index"] = (
-                                self.buf.riue()
-                            )
-                            unit["data"]["source-parameters"][
-                                "colour-spec-primaries"
-                            ] = utils.unraw(
+                            unit["data"]["source-parameters"]["colour-spec-index"] = self.buf.riue()
+                            unit["data"]["source-parameters"]["colour-spec-primaries"] = utils.unraw(
                                 unit["data"]["source-parameters"]["colour-spec-index"],
                                 1,
                                 {
@@ -3562,25 +3302,19 @@ class DiracModule(module.RuminantModule):
                                 },
                                 True,
                             )
-                            unit["data"]["source-parameters"]["colour-spec-matrix"] = (
-                                utils.unraw(
-                                    unit["data"]["source-parameters"][
-                                        "colour-spec-index"
-                                    ],
-                                    1,
-                                    {
-                                        0x00: "HDTV",
-                                        0x01: "SDTV",
-                                        0x02: "SDTV",
-                                        0x03: "HDTV",
-                                        0x04: "HDTV",
-                                    },
-                                    True,
-                                )
+                            unit["data"]["source-parameters"]["colour-spec-matrix"] = utils.unraw(
+                                unit["data"]["source-parameters"]["colour-spec-index"],
+                                1,
+                                {
+                                    0x00: "HDTV",
+                                    0x01: "SDTV",
+                                    0x02: "SDTV",
+                                    0x03: "HDTV",
+                                    0x04: "HDTV",
+                                },
+                                True,
                             )
-                            unit["data"]["source-parameters"][
-                                "colour-spec-transfer-function"
-                            ] = utils.unraw(
+                            unit["data"]["source-parameters"]["colour-spec-transfer-function"] = utils.unraw(
                                 unit["data"]["source-parameters"]["colour-spec-index"],
                                 1,
                                 {
@@ -3593,25 +3327,12 @@ class DiracModule(module.RuminantModule):
                                 True,
                             )
 
-                            if (
-                                unit["data"]["source-parameters"]["colour-spec-index"]
-                                == 0
-                            ):
-                                unit["data"]["source-parameters"][
-                                    "custom-colour-spec-primaries"
-                                ] = self.buf.rb(1)
-                                if unit["data"]["source-parameters"][
-                                    "custom-colour-spec-primaries"
-                                ]:
-                                    unit["data"]["source-parameters"][
-                                        "colour-spec-primaries-index"
-                                    ] = self.buf.riue()
-                                    unit["data"]["source-parameters"][
-                                        "colour-spec-primaries"
-                                    ] = utils.unraw(
-                                        unit["data"]["source-parameters"][
-                                            "colour-spec-primaries-index"
-                                        ],
+                            if unit["data"]["source-parameters"]["colour-spec-index"] == 0:
+                                unit["data"]["source-parameters"]["custom-colour-spec-primaries"] = self.buf.rb(1)
+                                if unit["data"]["source-parameters"]["custom-colour-spec-primaries"]:
+                                    unit["data"]["source-parameters"]["colour-spec-primaries-index"] = self.buf.riue()
+                                    unit["data"]["source-parameters"]["colour-spec-primaries"] = utils.unraw(
+                                        unit["data"]["source-parameters"]["colour-spec-primaries-index"],
                                         1,
                                         {
                                             0x00: "HDTV",
@@ -3622,25 +3343,12 @@ class DiracModule(module.RuminantModule):
                                         True,
                                     )
 
-                            if (
-                                unit["data"]["source-parameters"]["colour-spec-index"]
-                                == 0
-                            ):
-                                unit["data"]["source-parameters"][
-                                    "custom-colour-spec-matrix"
-                                ] = self.buf.rb(1)
-                                if unit["data"]["source-parameters"][
-                                    "custom-colour-spec-matrix"
-                                ]:
-                                    unit["data"]["source-parameters"][
-                                        "colour-spec-matrix-index"
-                                    ] = self.buf.riue()
-                                    unit["data"]["source-parameters"][
-                                        "colour-spec-matrix"
-                                    ] = utils.unraw(
-                                        unit["data"]["source-parameters"][
-                                            "colour-spec-matrix-index"
-                                        ],
+                            if unit["data"]["source-parameters"]["colour-spec-index"] == 0:
+                                unit["data"]["source-parameters"]["custom-colour-spec-matrix"] = self.buf.rb(1)
+                                if unit["data"]["source-parameters"]["custom-colour-spec-matrix"]:
+                                    unit["data"]["source-parameters"]["colour-spec-matrix-index"] = self.buf.riue()
+                                    unit["data"]["source-parameters"]["colour-spec-matrix"] = utils.unraw(
+                                        unit["data"]["source-parameters"]["colour-spec-matrix-index"],
                                         1,
                                         {
                                             0x00: "HDTV",
@@ -3650,25 +3358,12 @@ class DiracModule(module.RuminantModule):
                                         True,
                                     )
 
-                            if (
-                                unit["data"]["source-parameters"]["colour-spec-index"]
-                                == 0
-                            ):
-                                unit["data"]["source-parameters"][
-                                    "custom-colour-spec-transfer-function"
-                                ] = self.buf.rb(1)
-                                if unit["data"]["source-parameters"][
-                                    "custom-colour-spec-transfer-function"
-                                ]:
-                                    unit["data"]["source-parameters"][
-                                        "colour-spec-transfer-function-index"
-                                    ] = self.buf.riue()
-                                    unit["data"]["source-parameters"][
-                                        "colour-spec-transfer-function"
-                                    ] = utils.unraw(
-                                        unit["data"]["source-parameters"][
-                                            "colour-spec-transfer-function-index"
-                                        ],
+                            if unit["data"]["source-parameters"]["colour-spec-index"] == 0:
+                                unit["data"]["source-parameters"]["custom-colour-spec-transfer-function"] = self.buf.rb(1)
+                                if unit["data"]["source-parameters"]["custom-colour-spec-transfer-function"]:
+                                    unit["data"]["source-parameters"]["colour-spec-transfer-function-index"] = self.buf.riue()
+                                    unit["data"]["source-parameters"]["colour-spec-transfer-function"] = utils.unraw(
+                                        unit["data"]["source-parameters"]["colour-spec-transfer-function-index"],
                                         1,
                                         {
                                             0x00: "TV gamma",
