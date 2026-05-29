@@ -3264,7 +3264,6 @@ class DuckIvfModule(module.RuminantModule):
 
 @module.register
 class DiracModule(module.RuminantModule):
-    dev = True
     desc = "BBC Dirac data units."
 
     def identify(buf, ctx):
@@ -3438,7 +3437,247 @@ class DiracModule(module.RuminantModule):
                                 / unit["data"]["source-parameters"]["frame-rate-denom"]
                             )
 
-                            # TODO: https://avpres.net/pub/dirac-spec-latest.pdf#subsubsection.10.3.2
+                        unit["data"]["source-parameters"][
+                            "custom-pixel-aspect-ratio"
+                        ] = self.buf.rb(1)
+                        if unit["data"]["source-parameters"][
+                            "custom-pixel-aspect-ratio"
+                        ]:
+                            unit["data"]["source-parameters"][
+                                "pixel-aspect-ratio-index"
+                            ] = self.buf.riue()
+                            if (
+                                unit["data"]["source-parameters"][
+                                    "pixel-aspect-ratio-index"
+                                ]
+                                == 0
+                            ):
+                                unit["data"]["source-parameters"][
+                                    "pixel-aspect-ratio-num"
+                                ] = self.buf.riue()
+                                unit["data"]["source-parameters"][
+                                    "pixel-aspect-ratio-denom"
+                                ] = self.buf.riue()
+                            else:
+                                (
+                                    unit["data"]["source-parameters"][
+                                        "pixel-aspect-ratio-num"
+                                    ],
+                                    unit["data"]["source-parameters"][
+                                        "pixel-aspect-ratio-denom"
+                                    ],
+                                ) = {
+                                    0x01: (1, 1),
+                                    0x02: (10, 11),
+                                    0x03: (12, 11),
+                                    0x04: (40, 33),
+                                    0x05: (16, 11),
+                                    0x06: (4, 3),
+                                }.get(
+                                    unit["data"]["source-parameters"][
+                                        "pixel-aspect-ratio-index"
+                                    ],
+                                    (0, 1),
+                                )
+
+                        unit["data"]["source-parameters"]["custom-clean-area"] = (
+                            self.buf.rb(1)
+                        )
+                        if unit["data"]["source-parameters"]["custom-clean-area"]:
+                            unit["data"]["source-parameters"]["clean-area-width"] = (
+                                self.buf.riue()
+                            )
+                            unit["data"]["source-parameters"]["clean-area-height"] = (
+                                self.buf.riue()
+                            )
+                            unit["data"]["source-parameters"][
+                                "clean-area-left-offset"
+                            ] = self.buf.riue()
+                            unit["data"]["source-parameters"][
+                                "clean-area-top-offset"
+                            ] = self.buf.riue()
+
+                        unit["data"]["source-parameters"]["custom-signal"] = (
+                            self.buf.rb(1)
+                        )
+                        if unit["data"]["source-parameters"]["custom-signal"]:
+                            unit["data"]["source-parameters"]["signal-index"] = (
+                                self.buf.riue()
+                            )
+
+                            if unit["data"]["source-parameters"]["signal-index"] == 0:
+                                unit["data"]["source-parameters"][
+                                    "signal-luma-offset"
+                                ] = self.buf.riue()
+                                unit["data"]["source-parameters"][
+                                    "signal-luma-excursion"
+                                ] = self.buf.riue()
+                                unit["data"]["source-parameters"][
+                                    "signal-chroma-offset"
+                                ] = self.buf.riue()
+                                unit["data"]["source-parameters"][
+                                    "signal-chroma-excursion"
+                                ] = self.buf.riue()
+                            else:
+                                unit["data"]["source-parameters"][
+                                    "signal-luma-offset"
+                                ] = {0x01: 0, 0x02: 16, 0x03: 64, 0x04: 256}.get(
+                                    unit["data"]["source-parameters"]["signal-index"], 0
+                                )
+                                unit["data"]["source-parameters"][
+                                    "signal-luma-excursion"
+                                ] = {0x01: 255, 0x02: 219, 0x03: 876, 0x04: 3504}.get(
+                                    unit["data"]["source-parameters"]["signal-index"], 0
+                                )
+                                unit["data"]["source-parameters"][
+                                    "signal-chroma-offset"
+                                ] = {0x01: 128, 0x02: 128, 0x03: 512, 0x04: 2048}.get(
+                                    unit["data"]["source-parameters"]["signal-index"], 0
+                                )
+                                unit["data"]["source-parameters"][
+                                    "signal-chroma-excursion"
+                                ] = {0x01: 255, 0x02: 224, 0x03: 896, 0x04: 3584}.get(
+                                    unit["data"]["source-parameters"]["signal-index"], 0
+                                )
+
+                        # eww br*t*sh
+                        unit["data"]["source-parameters"]["custom-colour-spec"] = (
+                            self.buf.rb(1)
+                        )
+                        if unit["data"]["source-parameters"]["custom-colour-spec"]:
+                            unit["data"]["source-parameters"]["colour-spec-index"] = (
+                                self.buf.riue()
+                            )
+                            unit["data"]["source-parameters"][
+                                "colour-spec-primaries"
+                            ] = utils.unraw(
+                                unit["data"]["source-parameters"]["colour-spec-index"],
+                                1,
+                                {
+                                    0x00: "HDTV",
+                                    0x01: "SDTV 525",
+                                    0x02: "SDTV 625",
+                                    0x03: "HDTV",
+                                    0x04: "HDTV",
+                                },
+                                True,
+                            )
+                            unit["data"]["source-parameters"]["colour-spec-matrix"] = (
+                                utils.unraw(
+                                    unit["data"]["source-parameters"][
+                                        "colour-spec-index"
+                                    ],
+                                    1,
+                                    {
+                                        0x00: "HDTV",
+                                        0x01: "SDTV",
+                                        0x02: "SDTV",
+                                        0x03: "HDTV",
+                                        0x04: "HDTV",
+                                    },
+                                    True,
+                                )
+                            )
+                            unit["data"]["source-parameters"][
+                                "colour-spec-transfer-function"
+                            ] = utils.unraw(
+                                unit["data"]["source-parameters"]["colour-spec-index"],
+                                1,
+                                {
+                                    0x00: "TV gamma",
+                                    0x01: "TV gamma",
+                                    0x02: "TV gamma",
+                                    0x03: "TV gamma",
+                                    0x04: "DCinema gamma",
+                                },
+                                True,
+                            )
+
+                            if (
+                                unit["data"]["source-parameters"]["colour-spec-index"]
+                                == 0
+                            ):
+                                unit["data"]["source-parameters"][
+                                    "custom-colour-spec-primaries"
+                                ] = self.buf.rb(1)
+                                if unit["data"]["source-parameters"][
+                                    "custom-colour-spec-primaries"
+                                ]:
+                                    unit["data"]["source-parameters"][
+                                        "colour-spec-primaries-index"
+                                    ] = self.buf.riue()
+                                    unit["data"]["source-parameters"][
+                                        "colour-spec-primaries"
+                                    ] = utils.unraw(
+                                        unit["data"]["source-parameters"][
+                                            "colour-spec-primaries-index"
+                                        ],
+                                        1,
+                                        {
+                                            0x00: "HDTV",
+                                            0x01: "SDTV 525",
+                                            0x02: "SDTV 625",
+                                            0x03: "DCinema",
+                                        },
+                                        True,
+                                    )
+
+                            if (
+                                unit["data"]["source-parameters"]["colour-spec-index"]
+                                == 0
+                            ):
+                                unit["data"]["source-parameters"][
+                                    "custom-colour-spec-matrix"
+                                ] = self.buf.rb(1)
+                                if unit["data"]["source-parameters"][
+                                    "custom-colour-spec-matrix"
+                                ]:
+                                    unit["data"]["source-parameters"][
+                                        "colour-spec-matrix-index"
+                                    ] = self.buf.riue()
+                                    unit["data"]["source-parameters"][
+                                        "colour-spec-matrix"
+                                    ] = utils.unraw(
+                                        unit["data"]["source-parameters"][
+                                            "colour-spec-matrix-index"
+                                        ],
+                                        1,
+                                        {
+                                            0x00: "HDTV",
+                                            0x01: "SDTV",
+                                            0x02: "Reversible",
+                                        },
+                                        True,
+                                    )
+
+                            if (
+                                unit["data"]["source-parameters"]["colour-spec-index"]
+                                == 0
+                            ):
+                                unit["data"]["source-parameters"][
+                                    "custom-colour-spec-transfer-function"
+                                ] = self.buf.rb(1)
+                                if unit["data"]["source-parameters"][
+                                    "custom-colour-spec-transfer-function"
+                                ]:
+                                    unit["data"]["source-parameters"][
+                                        "colour-spec-transfer-function-index"
+                                    ] = self.buf.riue()
+                                    unit["data"]["source-parameters"][
+                                        "colour-spec-transfer-function"
+                                    ] = utils.unraw(
+                                        unit["data"]["source-parameters"][
+                                            "colour-spec-transfer-function-index"
+                                        ],
+                                        1,
+                                        {
+                                            0x00: "TV gamma",
+                                            0x01: "Extended Gamut",
+                                            0x02: "Linear",
+                                            0x03: "DCI Gamma",
+                                        },
+                                        True,
+                                    )
 
                         self.buf.align()
 
