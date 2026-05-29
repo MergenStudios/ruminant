@@ -1488,10 +1488,6 @@ class IsoModule(module.RuminantModule):
                     data["first-sample-nals"].append(nalu)
 
                 self.buf.sapunit()
-            case "mp4a" | "mp4v":
-                self.buf.seek(sample_to_offset[0])
-                with self.buf.sub(sample_sizes[0]):
-                    data["first-sample"] = chew(self.buf)
             case "av01":
                 self.buf.seek(sample_to_offset[0])
                 self.buf.pasunit(sample_sizes[0])
@@ -1501,6 +1497,10 @@ class IsoModule(module.RuminantModule):
                     data["obus"].append(self.read_av1_obu())
 
                 self.buf.sapunit()
+            case "mp4a" | "mp4v" | "drac":
+                self.buf.seek(sample_to_offset[0])
+                with self.buf.sub(sample_sizes[0]):
+                    data["first-sample"] = chew(self.buf)
             case _:
                 self.buf.seek(sample_to_offset[0])
                 with self.buf.sub(sample_sizes[0]):
