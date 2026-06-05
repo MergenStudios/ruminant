@@ -2404,7 +2404,7 @@ class MpegTsModule(module.RuminantModule):
 
                 if len(slack[pid]):
                     chunk = self.process(pid, Buf(slack[pid]))
-                    chunk["index"] = starts[pid]
+                    chunk["index"] = starts.get(pid, 0)
                     chunk["blob"] = slack[pid]
                     meta["chunks"].append(chunk)
 
