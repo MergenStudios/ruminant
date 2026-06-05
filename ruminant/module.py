@@ -1,7 +1,25 @@
 import os
 from . import buf
 
-modules = []
+
+class RuminantModule(object):
+    priority = 0
+    dev = False
+    desc = ""
+
+    def __init__(self, buf: buf.Buf):
+        self.buf = buf
+
+    @staticmethod
+    def identify(buf: buf.Buf, ctx={}):
+        return False
+
+    def chew(self):
+        self.buf.skip(self.buf.available())
+        return {}
+
+
+modules: list[RuminantModule] = []
 debug = os.environ.get("RUMINANT_DEBUG_MODE", "0") != "0"
 
 
@@ -22,19 +40,3 @@ def register(cls):
     modules.sort(key=lambda x: x.priority)
 
     return cls
-
-
-class RuminantModule(object):
-    priority = 0
-    dev = False
-    desc = ""
-
-    def __init__(self, buf: buf.Buf):
-        self.buf = buf
-
-    def identify(buf: buf.Buf, ctx={}):
-        return False
-
-    def chew(self):
-        self.buf.skip(self.buf.available())
-        return {}

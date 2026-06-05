@@ -1,9 +1,13 @@
 import sys
 import os
+from typing import TYPE_CHECKING
 
-# hack to import the oids module
-sys.path.insert(0, os.path.dirname(__file__))
-import oids  # noqa: E402
+if TYPE_CHECKING:
+    from . import oids
+else:
+    # hack to import the oids module
+    sys.path.insert(0, os.path.dirname(__file__))
+    oids = __import__("oids")  # noqa: E402
 
 
 # recursively collect needed but undefined OIDs

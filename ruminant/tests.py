@@ -1,7 +1,9 @@
+# mypy: disable-error-code="no-redef"
 from . import utils, crypto
 from .buf import Buf
+from typing import Callable, Any
 
-tests = {}
+tests: dict[str, dict[str, Callable]] = {}
 
 
 # annotation to register a function as a test
@@ -177,7 +179,7 @@ def f():
     assert_eq(buf.unit, 2)
 
 
-der_test_cases = (
+der_test_cases: tuple[tuple[str, str, dict[str, Any]], ...] = (
     ("null", "0500", {"type": "NULL", "length": 0, "value": None}),
     ("small-integer", "0203010001", {"type": "INTEGER", "length": 3, "value": 65537}),
     (
@@ -687,15 +689,15 @@ der_test_cases = (
 )
 
 
-def der_instance(name, data, dest):
+def der_instance(name: str, data: str, dest: dict[str, Any]) -> None:
     @test("utils.read_der", name)
     def f():
         buf = Buf(bytes.fromhex(data))
         assert_eq(utils.read_der(buf), dest)
 
 
-for instance in der_test_cases:
-    der_instance(*instance)
+for test_case in der_test_cases:
+    der_instance(*test_case)
 
 
 @test("Cryptography", "AES 128-bit encrypt")

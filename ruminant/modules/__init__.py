@@ -4,7 +4,7 @@ from ..buf import Buf
 import traceback
 import os
 
-to_extract = []
+to_extract: list[int] = []
 extract_all = False
 shallow = False
 blob_id = 0

@@ -537,10 +537,10 @@ PGP_S2K_TYPES = {
     0x04: "Argon2",
 }
 
-JPEG_QUANTIZATION_TABLES = {}
+JPEG_QUANTIZATION_TABLES: dict[str, list[str]] = {}
 
 
-def insert(k, v):
+def insert(k: str, v: str) -> None:
     if k not in JPEG_QUANTIZATION_TABLES:
         JPEG_QUANTIZATION_TABLES[k] = []
 

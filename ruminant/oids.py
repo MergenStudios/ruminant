@@ -1,6 +1,7 @@
 import os
+from . import types
 
-OIDS = {}
+OIDS: types.OidRegistry = {}
 
 # read ruminant/oids.txt
 with open(os.path.join(os.path.dirname(__file__), "oids.txt"), "r") as file:
@@ -11,9 +12,9 @@ with open(os.path.join(os.path.dirname(__file__), "oids.txt"), "r") as file:
             continue
 
         # remove tailing newline and split OID and name
-        line = line[:-1].split(": ")
+        line_split = line[:-1].split(": ")
         # add it to the rows
-        rows.append((line[0], ": ".join(line[1:])))
+        rows.append((line_split[0], ": ".join(line_split[1:])))
 
     # build the hierachy
     for row in rows:
