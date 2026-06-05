@@ -157,6 +157,9 @@ class Buf(object):
         self.skipunit()
         self.popunit()
 
+    def hasunit(self) -> bool:
+        return (self.unit > 0) if self.unit is not None else self.available() > 0
+
     def backup(self) -> types.BufBackup:
         """Return the entire internal state."""
         return (

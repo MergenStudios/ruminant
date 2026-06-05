@@ -1,5 +1,5 @@
 import os
-from . import buf
+from . import buf, types
 
 
 class RuminantModule(object):
@@ -11,10 +11,10 @@ class RuminantModule(object):
         self.buf = buf
 
     @staticmethod
-    def identify(buf: buf.Buf, ctx={}):
+    def identify(buf: buf.Buf, ctx={}) -> bool:
         return False
 
-    def chew(self):
+    def chew(self) -> types.JSON:
         self.buf.skip(self.buf.available())
         return {}
 

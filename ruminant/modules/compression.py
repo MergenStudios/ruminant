@@ -1,4 +1,5 @@
-from .. import module, utils
+from .. import module, utils, types
+from ..buf import Buf
 from . import chew
 
 import datetime
@@ -6,17 +7,19 @@ import tempfile
 import zlib
 import math
 import sys
+from typing import TYPE_CHECKING
 
 
 @module.register
 class GzipModule(module.RuminantModule):
     desc = "gzip steams."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(2) == b"\x1f\x8b"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "gzip"
 
         self.buf.skip(2)
@@ -77,7 +80,7 @@ class GzipModule(module.RuminantModule):
             self.buf.setunit(self.buf.ru16l())
 
             meta["extra"] = []
-            while self.buf.unit > 0:
+            while self.buf.hasunit():
                 extra = {}
                 extra["type"] = self.buf.rs(2, "latin-1")
                 extra["content"] = utils.decode(self.buf.read(self.buf.ru16l()))
@@ -132,11 +135,12 @@ class GzipModule(module.RuminantModule):
 class Bzip2Module(module.RuminantModule):
     desc = "bzip2 streams."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(2) == b"BZ"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "bzip2"
 
         with tempfile.TemporaryFile() as fd:
@@ -153,25 +157,30 @@ class Bzip2Module(module.RuminantModule):
 class ZstdModule(module.RuminantModule):
     desc = "Zstandard streams.\nIdeally, you should install pyzstd or backports.zstd or run Python version 3.14 or higher to allow decompression of the content."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"\x28\xb5\x2f\xfd"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "zstd"
 
-        # try to import zstd library as python doesn't ship it for versions < 3.14
-        has_zstd = True
-        try:
+        if TYPE_CHECKING:
+            has_zstd = True
             import pyzstd as zstd
-        except ImportError:
+        else:
+            # try to import zstd library as python doesn't ship it for versions < 3.14
+            has_zstd = True
             try:
-                if sys.version_info >= (3, 14):
-                    from compression import zstd
-                else:
-                    from backports import zstd
+                import pyzstd as zstd
             except ImportError:
-                has_zstd = False
+                try:
+                    if sys.version_info >= (3, 14):
+                        from compression import zstd
+                    else:
+                        from backports import zstd
+                except ImportError:
+                    has_zstd = False
 
         with self.buf:
             self.buf.skip(4)
@@ -254,11 +263,12 @@ class ZstdModule(module.RuminantModule):
 class ZlibModule(module.RuminantModule):
     desc = "zlib streams."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(2) in (b"\x78\x01", b"\x78\x5e", b"\x78\x9c", b"\x78\xda")
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "zlib"
         meta["compression-type"] = utils.unraw(
             self.buf.ru16() & 0xff,
@@ -279,11 +289,12 @@ class ZlibModule(module.RuminantModule):
 class XzModule(module.RuminantModule):
     desc = "xz streams."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(6) == b"\xfd7zXZ\x00"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "xz"
 
         self.buf.skip(6)

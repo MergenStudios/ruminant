@@ -1,4 +1,5 @@
-from .. import module, utils
+from .. import module, utils, types
+from ..buf import Buf
 from . import chew
 import zlib
 import json
@@ -8,11 +9,12 @@ import json
 class FlacModule(module.RuminantModule):
     desc = "FLAC audio files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"fLaC"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "flac"
 
         self.buf.skip(4)
@@ -20,7 +22,7 @@ class FlacModule(module.RuminantModule):
         meta["blocks"] = []
         more = True
         while more:
-            block = {}
+            block: dict = {}
             block["type"] = None
 
             flags = self.buf.ru8()
@@ -58,7 +60,7 @@ class FlacModule(module.RuminantModule):
                 case 3:
                     block["type"] = "Seek table"
                     block["data"]["entries"] = []
-                    while self.buf.unit > 0:
+                    while self.buf.hasunit():
                         entry = {}
                         entry["first-sample"] = self.buf.ri64()
                         entry["offset"] = self.buf.ru64()
@@ -123,7 +125,8 @@ class FlacModule(module.RuminantModule):
 class ID3v2Module(module.RuminantModule):
     desc = "ID3 version 2 metadata in MP3 files or MPEG-TS streams."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(3) == b"ID3"
 
     # helper since we need this a lot
@@ -139,7 +142,7 @@ class ID3v2Module(module.RuminantModule):
         else:
             return self.buf.ru32()
 
-    def chew(self):
+    def chew(self) -> types.JSON:
         self.force = False
 
         bak = self.buf.backup()
@@ -153,8 +156,8 @@ class ID3v2Module(module.RuminantModule):
             return self._chew()
 
     # actual chew()
-    def _chew(self):
-        meta = {}
+    def _chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "id3v2"
 
         self.buf.skip(3)
@@ -186,14 +189,14 @@ class ID3v2Module(module.RuminantModule):
             meta["extended-header"]["flags"] = self.buf.rh(self.buf.ru8())
 
             meta["extended-header"]["flag-values"] = []
-            while self.buf.unit > 0:
+            while self.buf.hasunit():
                 meta["extended-header"]["flag-values"].append(self.buf.rh(self.buf.ru8()))
 
             self.buf.skipunit()
             self.buf.popunit()
 
         meta["frames"] = []
-        while self.buf.unit > 0:
+        while self.buf.hasunit():
             if self.buf.pu16() == 0xfffb:
                 self.buf.setunit(0)
                 break
@@ -253,7 +256,7 @@ class ID3v2Module(module.RuminantModule):
                             1: "utf-16",
                             2: "utf-16be",
                             3: "utf-8",
-                        }.get(content[0])
+                        }.get(content[0], "utf-8")
                         content = content[1:]
 
                         mime_type = b""
@@ -322,7 +325,7 @@ class ID3v2Module(module.RuminantModule):
                             1: "utf-16",
                             2: "utf-16be",
                             3: "utf-8",
-                        }.get(content[0])
+                        }.get(content[0], "utf-8")
                         content = content[1:]
 
                         language = content[:3].decode("latin-1").rstrip("\x00")
@@ -352,7 +355,7 @@ class ID3v2Module(module.RuminantModule):
                             1: "utf-16",
                             2: "utf-16be",
                             3: "utf-8",
-                        }.get(content[0])
+                        }.get(content[0], "utf-8")
                         content = content[1:]
 
                         mime_type = b""
@@ -456,15 +459,18 @@ class ID3v2Module(module.RuminantModule):
 class Mp3Module(module.RuminantModule):
     desc = "Raw MP3 files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if buf.available() < 4:
             return False
 
         if buf.pu32() & 0b11111111111_00_11_0_0000_00_0_000000000 == 0b11111111111_00_01_0_0000_00_0_000000000:
             return (buf.pu32() >> 12) & 0b1111 != 0b1111 and (buf.pu32() >> 10) & 0b11 != 0b11
 
-    def chew(self):
-        meta = {}
+        return False
+
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "mp3"
 
         meta["frames"] = []
@@ -724,11 +730,12 @@ class Mp3Module(module.RuminantModule):
 class MidiModule(module.RuminantModule):
     desc = "MIDI files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"MThd"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "midi"
 
         self.buf.skip(4)
@@ -754,14 +761,14 @@ class MidiModule(module.RuminantModule):
         last_opcode = 0
         meta["tracks"] = []
         while self.buf.peek(4) == b"MTrk":
-            track = {}
+            track: dict = {}
             self.buf.skip(4)
             track["length"] = self.buf.ru32()
 
             self.buf.pasunit(track["length"])
 
             track["events"] = []
-            while self.buf.unit > 0:
+            while self.buf.hasunit():
                 event = {}
                 event["delta"] = self.buf.ruleb()
 
@@ -869,7 +876,7 @@ class MidiModule(module.RuminantModule):
                             event["coarse-change"] = self.buf.ru8()
                         case _:
                             event["unknown"] = True
-                            self.buf.skip(self.buf.unit)
+                            self.buf.skip(self.buf.unit if self.buf.unit is not None else 0)
 
                 track["events"].append(event)
 

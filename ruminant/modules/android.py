@@ -1,4 +1,4 @@
-from .. import module, utils
+from .. import module, utils, types
 from ..buf import Buf
 from . import chew
 
@@ -7,7 +7,8 @@ from . import chew
 class VbmetaModule(module.RuminantModule):
     desc = "vbmeta partitions from AVB."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"AVB0"
 
     # read a public key given the algorithm
@@ -32,8 +33,8 @@ class VbmetaModule(module.RuminantModule):
 
         return key
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "vbmeta"
 
         self.buf.skip(4)
@@ -93,8 +94,8 @@ class VbmetaModule(module.RuminantModule):
 
         # these are now kind of key-value pairs
         meta["auxiliary-data-block"]["descriptors"] = []
-        while self.buf.unit > 0:
-            tag = {}
+        while self.buf.hasunit():
+            tag: dict = {}
             typ = self.buf.ru64()
             tag["type"] = None
             tag["length"] = self.buf.ru64()
@@ -213,15 +214,16 @@ class AndroidBootImgModule(module.RuminantModule):
     dev = True
     desc = "Android boot images"
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(8) == b"ANDROID!"
 
     # for addresses
     def hex(self, v):
         return {"raw": v, "hex": hex(v)}
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "android-bootimg"
 
         meta["header"] = {}
