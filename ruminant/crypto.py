@@ -2,7 +2,7 @@ import os
 import hashlib
 import math
 import hmac
-from typing import TYPE_CHECKING
+from typing import Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
 
@@ -259,18 +259,17 @@ else:
                 return bytes(res)
 
 
-def aes_xts_plain64(K1, K2, sector_size):
-    def gma(tweak):
-        tweak = int.from_bytes(tweak, "little")
-        carry = tweak >> 127
-        tweak <<= 1
+def aes_xts_plain64(K1: bytes, K2: bytes, sector_size: int) -> Callable[[int, bytes], bytes]:
+    def gma(tweak: bytes) -> bytes:
+        itweak = int.from_bytes(tweak, "little")
+        carry = itweak >> 127
+        itweak <<= 1
         if carry:
-            tweak ^= 0x87
-        tweak &= (2**128) - 1
-        tweak = tweak.to_bytes(16, "little")
-        return tweak
+            itweak ^= 0x87
+        itweak &= (2**128) - 1
+        return itweak.to_bytes(16, "little")
 
-    def decrypt(offset, ciphertext):
+    def decrypt(offset: int, ciphertext: bytes) -> bytes:
         assert offset % 16 == 0, "unaligned"
 
         try:
@@ -320,18 +319,18 @@ def aes_xts_plain64(K1, K2, sector_size):
 class CryptoBuf(object):
     _buf_magic = True
 
-    def __init__(self, file, decrypt_function):
+    def __init__(self, file: Any, decrypt_function: Callable[[int, bytes], bytes]):
         self._file = file
         self._decrypt_function = decrypt_function
 
         file.seek(0, 2)
-        self._size = file.tell()
+        self._size: int = file.tell()
         file.seek(0)
 
-        self._cache = {}
-        self._page_size = 65536
+        self._cache: dict[int, bytes] = {}
+        self._page_size: int = 65536
 
-    def read(self, size=-1):
+    def read(self, size: int = -1) -> bytes:
         if size == -1:
             size = self._size - self._file.tell()
 
@@ -350,19 +349,19 @@ class CryptoBuf(object):
 
         return data[pos % self._page_size : (pos % self._page_size) + size]
 
-    def _decrypt(self, page):
+    def _decrypt(self, page: int) -> None:
         if page not in self._cache:
             self._file.seek(page)
             self._cache[page] = self._decrypt_function(page, self._file.read(self._page_size))
 
-    def write(self, data):
+    def write(self, data: bytes) -> None:
         raise NotImplementedError()
 
     def __getattr__(self, name):
         return getattr(self._file, name)
 
 
-def poly1305(msg, key):
+def poly1305(msg: bytes, key: bytes) -> bytes:
     P = (1 << 130) - 5
 
     assert len(key) == 32, "invalid key length"
@@ -393,11 +392,11 @@ def poly1305(msg, key):
     return a.to_bytes(16, "little")
 
 
-def rotl(a, b):
+def rotl(a: int, b: int) -> int:
     return ((a << b) & 0xffffffff) | (a >> (32 - b))
 
 
-def chacha_qr(x, a, b, c, d):
+def chacha_qr(x: list[int], a: int, b: int, c: int, d: int) -> None:
     x[a] = (x[a] + x[b]) & 0xffffffff
     x[d] ^= x[a]
     x[d] = rotl(x[d], 16)
@@ -412,7 +411,7 @@ def chacha_qr(x, a, b, c, d):
     x[b] = rotl(x[b], 7)
 
 
-def chacha_block(input_state):
+def chacha_block(input_state: bytes) -> bytes:
     x = []
     for i in range(0, 64, 4):
         x.append(int.from_bytes(input_state[i : i + 4], "little"))
@@ -436,7 +435,7 @@ def chacha_block(input_state):
     return out
 
 
-def chacha20(msg, key, nonce, counter=1):
+def chacha20(msg: bytes, key: bytes, nonce: bytes, counter: int = 1) -> bytes:
     assert len(key) == 32, "invalid key length"
     assert len(nonce) in (8, 12), "invalid nonce length"
 
@@ -452,7 +451,7 @@ def chacha20(msg, key, nonce, counter=1):
     return bytes([x ^ k for x, k in zip(msg, ks[: len(msg)])])
 
 
-def chacha20_poly1305(msg, key, nonce, tag, aad=b""):
+def chacha20_poly1305(msg: bytes, key: bytes, nonce: bytes, tag: bytes, aad: bytes = b"") -> bytes:
     assert len(tag) == 16, "invalid tag length"
 
     # lower throws asserts already
@@ -473,13 +472,13 @@ def chacha20_poly1305(msg, key, nonce, tag, aad=b""):
     return chacha20(msg, key, nonce)
 
 
-def hkdf_extract(salt, ikm):
+def hkdf_extract(salt: bytes, ikm: bytes) -> bytes:
     if salt is None or len(salt) == 0:
         salt = bytes([0] * hashlib.sha256().digest_size)
     return hmac.new(salt, ikm, hashlib.sha256).digest()
 
 
-def hkdf_expand(prk, info, length):
+def hkdf_expand(prk: bytes, info: bytes, length: int) -> bytes:
     hash_len = hashlib.sha256().digest_size
     assert length <= 255 * hash_len, "invalid length"
 
@@ -494,12 +493,12 @@ def hkdf_expand(prk, info, length):
     return okm[:length]
 
 
-def hkdf_sha256(ikm, length, salt=b"", info=b""):
+def hkdf_sha256(ikm: bytes, length: int, salt: bytes = b"", info: bytes = b"") -> bytes:
     prk = hkdf_extract(salt, ikm)
     return hkdf_expand(prk, info, length)
 
 
-def bech32_polymod(values):
+def bech32_polymod(values: list[int]) -> int:
     GEN = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3]
     chk = 1
     for v in values:
@@ -510,14 +509,14 @@ def bech32_polymod(values):
     return chk
 
 
-def bech32_hrp_expand(s):
+def bech32_hrp_expand(s: str) -> list[int]:
     return [ord(x) >> 5 for x in s] + [0] + [ord(x) & 31 for x in s]
 
 
-def bech32_verify_checksum(data):
+def bech32_verify_checksum(data: str) -> bool:
     data = data.lower()
     hrp = "1".join(data.split("1")[:-1])
-    data = [
+    data_list = [
         {
             "q": 0,
             "p": 1,
@@ -555,16 +554,16 @@ def bech32_verify_checksum(data):
         for x in data.split("1")[-1]
     ]
 
-    return bech32_polymod(bech32_hrp_expand(hrp) + data) == 1
+    return bech32_polymod(bech32_hrp_expand(hrp) + data_list) == 1
 
 
-def bech32_create_checksum(hrp, data):
+def bech32_create_checksum(hrp: str, data: list[int]) -> list[int]:
     values = bech32_hrp_expand(hrp) + data
     polymod = bech32_polymod(values + [0, 0, 0, 0, 0, 0]) ^ 1
     return [(polymod >> 5 * (5 - i)) & 31 for i in range(6)]
 
 
-def bech32_convertbits(data, frombits, tobits, pad=True):
+def bech32_convertbits(data: bytes, frombits: int, tobits: int, pad: bool = True) -> list[int]:
     acc = 0
     bits = 0
     ret = []
@@ -581,13 +580,13 @@ def bech32_convertbits(data, frombits, tobits, pad=True):
     return ret
 
 
-def curve25519(base, scalar):
+def curve25519(base: bytes, scalar: bytes) -> bytes:
     P = 2**255 - 19
 
     assert len(base) == 32, "invalid base point length"
     assert len(scalar) == 32, "invalid scalar length"
 
-    def point_add(point_n, point_m, point_diff):
+    def point_add(point_n: tuple[int, int], point_m: tuple[int, int], point_diff: tuple[int, int]):
         (xn, zn) = point_n
         (xm, zm) = point_m
         (x_diff, z_diff) = point_diff
@@ -595,7 +594,7 @@ def curve25519(base, scalar):
         z = (x_diff << 2) * (xm * zn - zm * xn) ** 2
         return x % P, z % P
 
-    def point_double(point_n):
+    def point_double(point_n: tuple[int, int]) -> tuple[int, int]:
         (xn, zn) = point_n
         xn2 = xn**2
         zn2 = zn**2
@@ -604,13 +603,13 @@ def curve25519(base, scalar):
         z = 4 * xzn * (xn2 + 486662 * xzn + zn2)
         return x % P, z % P
 
-    def const_time_swap(a, b, swap):
+    def const_time_swap(a: Any, b: Any, swap: bool) -> Any:
         """Swap two values in constant time"""
         index = int(swap) * 2
         temp = (a, b, b, a)
         return temp[index : index + 2]
 
-    def _curve25519(base, n):
+    def _curve25519(base: int, n: int) -> int:
         """Raise the point base to the power n"""
         zero = (1, 0)
         one = (base, 1)
@@ -626,10 +625,9 @@ def curve25519(base, scalar):
         inv_z = pow(z, P - 2, P)
         return (x * inv_z) % P
 
-    base = int.from_bytes(base, "little")
-    secret = int.from_bytes(scalar, "little") & ~7 & ~(128 << 8 * 31) | (64 << 8 * 31)
-
-    return _curve25519(base, secret).to_bytes(32, "little")
+    return _curve25519(
+        int.from_bytes(base, "little"), int.from_bytes(scalar, "little") & ~7 & ~(128 << 8 * 31) | (64 << 8 * 31)
+    ).to_bytes(32, "little")
 
 
 has_argon2 = True
@@ -639,7 +637,9 @@ except ImportError:
     has_argon2 = False
 
 
-def argon2(secret, salt, iterations, memory, parallelism, hash_len, type, version=0x13):
+def argon2(
+    secret: bytes, salt: bytes, iterations: int, memory: int, parallelism: int, hash_len: int, typ: str, version: int = 0x13
+) -> bytes:
     if not has_argon2:
         raise Exception()
 
@@ -654,12 +654,12 @@ def argon2(secret, salt, iterations, memory, parallelism, hash_len, type, versio
             "i": _argon2.low_level.Type.I,
             "d": _argon2.low_level.Type.D,
             "id": _argon2.low_level.Type.ID,
-        }.get(type),
+        }.get(typ, _argon2.low_level.Type.I),
         version,
     )
 
 
-def aes_cbc_pkcs7(key, iv, input_text, decrypt=True):
+def aes_cbc_pkcs7(key: bytes, iv: bytes, input_text: bytes, decrypt: bool = True) -> bytes:
     assert len(iv) == 16, "invalid IV length"
 
     f = AES(key).decrypt if decrypt else AES(key).encrypt
