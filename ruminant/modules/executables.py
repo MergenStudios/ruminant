@@ -2164,7 +2164,7 @@ class PeModule(module.RuminantModule):
                         while self.buf.unit > 0:
                             entry = {}
                             entry["length"] = self.buf.ru32l()
-                            self.buf.pasunit(entry["length"])
+                            self.buf.pasunit(entry["length"] - 4)
                             rev = self.buf.ru16l()
                             entry["revision"] = f"{rev >> 8}.{rev & 0xff}"
                             entry["type"] = utils.unraw(
