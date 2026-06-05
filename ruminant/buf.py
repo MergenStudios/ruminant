@@ -385,99 +385,131 @@ class Buf(object):
         return self.ri32l() / 65536
 
     def pu8(self):
+        """Peek an 8-bit unsigned big-endian integer."""
         return int.from_bytes(self.peek(1), "big")
 
     def pu16(self):
+        """Peek a 16-bit unsigned big-endian integer."""
         return int.from_bytes(self.peek(2), "big")
 
     def pu24(self):
+        """Peek a 24-bit unsigned big-endian integer."""
         return int.from_bytes(self.peek(3), "big")
 
     def pu32(self):
+        """Peek a 32-bit unsigned big-endian integer."""
         return int.from_bytes(self.peek(4), "big")
 
     def pu64(self):
+        """Peek a 64-bit unsigned big-endian integer."""
         return int.from_bytes(self.peek(8), "big")
 
     def pi8(self):
+        """Peek an 8-bit signed big-endian integer."""
         return int.from_bytes(self.peek(1), "big", signed=True)
 
     def pi16(self):
+        """Peek a 16-bit signed big-endian integer."""
         return int.from_bytes(self.peek(2), "big", signed=True)
 
     def pi24(self):
+        """Peek a 24-bit signed big-endian integer."""
         return int.from_bytes(self.peek(3), "big", signed=True)
 
     def pi32(self):
+        """Peek a 32-bit signed big-endian integer."""
         return int.from_bytes(self.peek(4), "big", signed=True)
 
     def pi64(self):
+        """Peek a 64-bit signed big-endian integer."""
         return int.from_bytes(self.peek(8), "big", signed=True)
 
     def pu8l(self):
+        """Peek an 8-bit unsigned little-endian integer."""
         return int.from_bytes(self.peek(1), "little")
 
     def pu16l(self):
+        """Peek a 16-bit unsigned little-endian integer."""
         return int.from_bytes(self.peek(2), "little")
 
     def pu24l(self):
+        """Peek a 24-bit unsigned little-endian integer."""
         return int.from_bytes(self.peek(3), "little")
 
     def pu32l(self):
+        """Peek a 32-bit unsigned little-endian integer."""
         return int.from_bytes(self.peek(4), "little")
 
     def pu64l(self):
+        """Peek a 64-bit unsigned little-endian integer."""
         return int.from_bytes(self.peek(8), "little")
 
     def pi8l(self):
+        """Peek an 8-bit signed little-endian integer."""
         return int.from_bytes(self.peek(1), "little", signed=True)
 
     def pi16l(self):
+        """Peek a 16-bit signed little-endian integer."""
         return int.from_bytes(self.peek(2), "little", signed=True)
 
     def pi24l(self):
+        """Peek a 24-bit signed little-endian integer."""
         return int.from_bytes(self.peek(3), "little", signed=True)
 
     def pi32l(self):
+        """Peek a 32-bit signed little-endian integer."""
         return int.from_bytes(self.peek(4), "little", signed=True)
 
     def pi64l(self):
+        """Peek a 64-bit signed little-endian integer."""
         return int.from_bytes(self.peek(8), "little", signed=True)
 
     def pf32(self):
+        """Peek a 32-bit big-endian floating point number."""
         return struct.unpack(">f", self.peek(4))[0]
 
     def pf64(self):
+        """Peek a 64-bit big-endian floating point number."""
         return struct.unpack(">d", self.peek(8))[0]
 
     def pf32l(self):
+        """Peek a 32-bit litle-endian floating point number."""
         return struct.unpack("<f", self.peek(4))[0]
 
     def pf64l(self):
+        """Peek a 64-bit litle-endian floating point number."""
         return struct.unpack("<d", self.peek(8))[0]
 
     def pfp16(self):
+        """Peek an 8.8 unsigned big-endian fixed point number."""
         return self.ru16() / 256
 
     def pfp32(self):
+        """Peek a 16.16 unsigned big-endian fixed point number."""
         return self.ru32l() / 65536
 
     def psfp16(self):
+        """Peek an 8.8 signed big-endian fixed point number."""
         return self.ri16l() / 256
 
     def psfp32(self):
+        """Peek a 16.16 signed big-endian fixed point number."""
         return self.ri32l() / 65536
 
     def pfp16l(self):
+        """Peek an 8.8 unsigned little-endian fixed point number."""
         return self.ru16l() / 256
 
     def pfp32l(self):
+        """Peek a 16.16 unsigned little-endian fixed point number."""
         return self.ru32l() / 65536
 
     def psfp16l(self):
+        """Peek an 8.8 signed little-endian fixed point number."""
         return self.ri16l() / 256
 
     def psfp32l(self):
+        """Peek a 16.16 signed little-endian fixed point number."""
         return self.ri32l() / 65536
 
     def rh(self, length):
