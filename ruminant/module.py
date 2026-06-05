@@ -1,4 +1,5 @@
 import os
+from . import buf
 
 modules = []
 debug = os.environ.get("RUMINANT_DEBUG_MODE", "0") != "0"
@@ -28,10 +29,10 @@ class RuminantModule(object):
     dev = False
     desc = ""
 
-    def __init__(self, buf):
+    def __init__(self, buf: buf.Buf):
         self.buf = buf
 
-    def identify(buf, ctx={}):
+    def identify(buf: buf.Buf, ctx={}):
         return False
 
     def chew(self):

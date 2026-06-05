@@ -14,10 +14,10 @@ def _decode(content, encoding="utf-8"):
 class Buf(object):
     def __init__(self, source):
         if (
-            isinstance(source, io.IOBase)
-            or isinstance(source, tempfile._TemporaryFileWrapper)
-            or hasattr(source, "_buf_magic")
-            or source.__class__.__name__ in ("mmap")
+            isinstance(source, io.IOBase)  # file-esque object
+            or isinstance(source, tempfile._TemporaryFileWrapper)  # tempfile wrappers are not files???
+            or hasattr(source, "_buf_magic")  # dirty hack for CryptoBuf
+            or source.__class__.__name__ in ("mmap")  # mmap'ed files are also not files???
         ):
             self._file = source
         else:
@@ -44,21 +44,33 @@ class Buf(object):
             return cls(source)
 
     def available(self):
+        """Return the total amount of remaining bytes, ignoring any unit constraints."""
         return max(self._size - self.tell(), 0)
 
     def isend(self):
+        """Return whether no more bytes are available."""
         return self.available() <= 0
 
     def size(self):
+        """Return the size of the buf regardless of the cursor position."""
         return self._size
 
     def peek(self, length):
+        """Read length bytes without changing any internal state."""
+        if self._bits != 0:
+            raise ValueError("unaligned")
+
+        if self.unit is not None:
+            unit = max(self.unit - length, 0)
+            assert unit >= 0, f"unit overread by {-unit} byte{'s' if unit != -1 else ''}"
+
         pos = self.tell()
         data = self._file.read(length)
         self.seek(pos)
         return data
 
     def skip(self, length):
+        """Skip length bytes."""
         if self._bits != 0:
             raise ValueError("unaligned")
 
@@ -68,60 +80,71 @@ class Buf(object):
         self.seek(length, 1)
 
     def _checkunit(self):
+        """Check whether the unit constraint is satisfied."""
         assert self.unit >= 0, f"unit overread by {-self.unit} byte{'s' if self.unit != -1 else ''}"
 
     def setunit(self, length):
+        """Set the unit to the span from the cursor to the cursors + length."""
         self.unit = length
         self._target = self.tell() + length
         self._checkunit()
 
     def skipunit(self):
+        """Skip to the end of the unit."""
         self.seek(self._target)
         self.unit = 0
 
     def readunit(self):
+        """Read all bytes in the unit."""
         return self.read(self.unit)
 
     def resetunit(self):
+        """Reset the unit"""
         self.unit = None
 
-    def read(self, count=None, free=False):
+    def read(self, length=None, free=False):
+        """Read length bytes, optionally ignore the unit constraint with free."""
         if self._bits != 0:
             raise ValueError("unaligned")
 
-        if count is None:
+        if length is None:
             self.unit = None
             return self._file.read(self.available())
         else:
             if not free:
                 if self.unit is not None:
-                    self.unit -= count
+                    self.unit -= length
                     self._checkunit()
 
-                if self.available() < count:
-                    self.unit = self.available() - count
+                if self.available() < length:
+                    self.unit = self.available() - length
                     self._checkunit()
 
-            return self._file.read(count)
+            return self._file.read(length)
 
     def pushunit(self):
+        """Push the current unit state on the stack."""
         self._stack.append((self.unit, self._target))
 
     def popunit(self):
+        """Pop from the stack into the current unit state."""
         self.unit, t = self._stack.pop()
         if self.unit is not None:
             self.unit = max(t - self._target, 0)
         self._target = t
 
     def pasunit(self, val):
+        """Push and set unit."""
         self.pushunit()
         self.setunit(val)
 
     def sapunit(self):
+        """Skip and pop unit."""
         self.skipunit()
         self.popunit()
 
     def backup(self):
+        """Return the entire internal state."""
         return (
             self.unit,
             self._target,
@@ -133,6 +156,7 @@ class Buf(object):
         )
 
     def restore(self, bak):
+        """Restore the entire internal state."""
         (
             self.unit,
             self._target,
@@ -145,6 +169,7 @@ class Buf(object):
         self.seek(offset)
 
     def rl(self):
+        """Read line."""
         line = b""
         while (self.unit is None or (self.unit > 0)) and self.available() > 0:
             c = self.read(1)
@@ -161,19 +186,23 @@ class Buf(object):
         return line
 
     def pl(self):
+        """Peek line."""
         with self:
             return self.rl()
 
     def tell(self):
+        """Return the current cursor offset."""
         return self._file.tell() - self._offset
 
     def seek(self, pos, whence=0):
+        """Seek to pos, this will probably break the unit stuff."""
         if whence == 0:
             pos += self._offset
 
         self._file.seek(pos, whence)
 
     def sub(self, size):
+        """Return context manager to limit the buf to a sub buffer starting from the current cursor with a length of size."""
         assert size <= self.available(), "sub buffer is bigger than host buffer"
 
         class SubWrapper(object):
@@ -192,12 +221,15 @@ class Buf(object):
         return SubWrapper()
 
     def subunit(self):
+        """Return sub buffer with the limits of the current unit."""
         return self.sub(self.unit)
 
     def cut(self):
+        """Return sub buffer with the remaining bytes."""
         return self.sub(self.available())
 
     def search(self, s, buf_length=1 << 24):
+        """Search for and seek to a specific pattern or throw a ValueError if not found."""
         buf = b""
         while True:
             chunk = self.read(min(buf_length, self.unit if self.unit else self.available()))
@@ -217,33 +249,43 @@ class Buf(object):
                 return
 
     def ru8(self):
+        """Read an 8-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(1), "big")
 
     def ru16(self):
+        """Read an 16-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(2), "big")
 
     def ru24(self):
+        """Read an 24-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(3), "big")
 
     def ru32(self):
+        """Read an 32-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(4), "big")
 
     def ru64(self):
+        """Read an 64-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(8), "big")
 
     def ri8(self):
+        """Read an 8-bit signed big-endian integer."""
         return int.from_bytes(self.read(1), "big", signed=True)
 
     def ri16(self):
+        """Read an 16-bit signed big-endian integer."""
         return int.from_bytes(self.read(2), "big", signed=True)
 
     def ri24(self):
+        """Read an 24-bit signed big-endian integer."""
         return int.from_bytes(self.read(3), "big", signed=True)
 
     def ri32(self):
+        """Read an 32-bit signed big-endian integer."""
         return int.from_bytes(self.read(4), "big", signed=True)
 
     def ri64(self):
+        """Read an 64-bit signed big-endian integer."""
         return int.from_bytes(self.read(8), "big", signed=True)
 
     def ru8l(self):
