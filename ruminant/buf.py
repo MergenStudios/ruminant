@@ -2,9 +2,22 @@ import io
 import struct
 import uuid
 import tempfile
+from typing import Any, Self, TYPE_CHECKING
+from . import types
+
+if TYPE_CHECKING:
+
+    class SubWrapper(object):
+        def __enter__(self) -> None:
+            self._offset: int
+            self._size: int
+            self._bak: types.BufBackup
+
+        def __exit__(self, *args) -> None:
+            pass
 
 
-def _decode(content, encoding="utf-8"):
+def _decode(content: bytes, encoding: str = "utf-8") -> str:
     try:
         return content.decode(encoding)
     except Exception:
@@ -12,7 +25,7 @@ def _decode(content, encoding="utf-8"):
 
 
 class Buf(object):
-    def __init__(self, source):
+    def __init__(self, source: Any):
         if (
             isinstance(source, io.IOBase)  # file-esque object
             or isinstance(source, tempfile._TemporaryFileWrapper)  # tempfile wrappers are not files???
@@ -23,39 +36,40 @@ class Buf(object):
         else:
             self._file = io.BytesIO(source)
 
-        self._offset = 0
+        self._offset: int = 0
 
         pos = self.tell()
         self.seek(0, 2)
-        self._size = self.tell()
+        self._size: int = self.tell()
         self.seek(pos)
 
+        self.unit: int | None = None
         self.resetunit()
-        self._target = self._size
-        self._stack = []
-        self._backup = []
-        self._bits = 0
+        self._target: int = self._size
+        self._stack: types.BufStack = []
+        self._backup: list[types.BufBackup] = []
+        self._bits: int = 0
 
     @classmethod
-    def of(cls, source):
+    def of(cls, source: Any) -> Self:
         if isinstance(source, cls):
             return source
         else:
             return cls(source)
 
-    def available(self):
+    def available(self) -> int:
         """Return the total amount of remaining bytes, ignoring any unit constraints."""
         return max(self._size - self.tell(), 0)
 
-    def isend(self):
+    def isend(self) -> bool:
         """Return whether no more bytes are available."""
         return self.available() <= 0
 
-    def size(self):
+    def size(self) -> int:
         """Return the size of the buf regardless of the cursor position."""
         return self._size
 
-    def peek(self, length):
+    def peek(self, length: int) -> bytes:
         """Read length bytes without changing any internal state."""
         if self._bits != 0:
             raise ValueError("unaligned")
@@ -69,7 +83,7 @@ class Buf(object):
         self.seek(pos)
         return data
 
-    def skip(self, length):
+    def skip(self, length: int) -> None:
         """Skip length bytes."""
         if self._bits != 0:
             raise ValueError("unaligned")
@@ -83,26 +97,26 @@ class Buf(object):
         """Check whether the unit constraint is satisfied."""
         assert self.unit >= 0, f"unit overread by {-self.unit} byte{'s' if self.unit != -1 else ''}"
 
-    def setunit(self, length):
+    def setunit(self, length: int) -> None:
         """Set the unit to the span from the cursor to the cursors + length."""
         self.unit = length
         self._target = self.tell() + length
         self._checkunit()
 
-    def skipunit(self):
+    def skipunit(self) -> None:
         """Skip to the end of the unit."""
         self.seek(self._target)
         self.unit = 0
 
-    def readunit(self):
+    def readunit(self) -> bytes:
         """Read all bytes in the unit."""
         return self.read(self.unit)
 
-    def resetunit(self):
+    def resetunit(self) -> None:
         """Reset the unit"""
         self.unit = None
 
-    def read(self, length=None, free=False):
+    def read(self, length: int | None = None, free: bool = False) -> bytes:
         """Read length bytes, optionally ignore the unit constraint with free."""
         if self._bits != 0:
             raise ValueError("unaligned")
@@ -122,28 +136,28 @@ class Buf(object):
 
             return self._file.read(length)
 
-    def pushunit(self):
+    def pushunit(self) -> None:
         """Push the current unit state on the stack."""
         self._stack.append((self.unit, self._target))
 
-    def popunit(self):
+    def popunit(self) -> None:
         """Pop from the stack into the current unit state."""
         self.unit, t = self._stack.pop()
         if self.unit is not None:
             self.unit = max(t - self._target, 0)
         self._target = t
 
-    def pasunit(self, val):
+    def pasunit(self, val: int) -> None:
         """Push and set unit."""
         self.pushunit()
         self.setunit(val)
 
-    def sapunit(self):
+    def sapunit(self) -> None:
         """Skip and pop unit."""
         self.skipunit()
         self.popunit()
 
-    def backup(self):
+    def backup(self) -> types.BufBackup:
         """Return the entire internal state."""
         return (
             self.unit,
@@ -155,7 +169,7 @@ class Buf(object):
             self._bits,
         )
 
-    def restore(self, bak):
+    def restore(self, bak: types.BufBackup) -> None:
         """Restore the entire internal state."""
         (
             self.unit,
@@ -168,7 +182,7 @@ class Buf(object):
         ) = bak
         self.seek(offset)
 
-    def rl(self):
+    def rl(self) -> bytes:
         """Read line."""
         line = b""
         while (self.unit is None or (self.unit > 0)) and self.available() > 0:
@@ -185,50 +199,52 @@ class Buf(object):
 
         return line
 
-    def pl(self):
+    def pl(self) -> bytes:
         """Peek line."""
         with self:
             return self.rl()
 
-    def tell(self):
+    def tell(self) -> int:
         """Return the current cursor offset."""
         return self._file.tell() - self._offset
 
-    def seek(self, pos, whence=0):
+    def seek(self, pos: int, whence: int = 0) -> None:
         """Seek to pos, this will probably break the unit stuff."""
         if whence == 0:
             pos += self._offset
 
         self._file.seek(pos, whence)
 
-    def sub(self, size):
+    def sub(self, size: int) -> SubWrapper:
         """Return context manager to limit the buf to a sub buffer starting from the current cursor with a length of size."""
         assert size <= self.available(), "sub buffer is bigger than host buffer"
 
-        class SubWrapper(object):
-            def __enter__(self2):
-                self2._offset = self._offset
-                self2._size = self._size
-                self2._bak = self.backup()
-                self._offset += self.tell()
-                self._size = size
+        if not TYPE_CHECKING:
 
-                self.resetunit()
+            class SubWrapper(object):
+                def __enter__(self2):
+                    self2._offset = self._offset
+                    self2._size = self._size
+                    self2._bak = self.backup()
+                    self._offset += self.tell()
+                    self._size = size
 
-            def __exit__(self2, *args):
-                self.restore(self2._bak)
+                    self.resetunit()
+
+                def __exit__(self2, *args):
+                    self.restore(self2._bak)
 
         return SubWrapper()
 
-    def subunit(self):
+    def subunit(self) -> SubWrapper:
         """Return sub buffer with the limits of the current unit."""
-        return self.sub(self.unit)
+        return self.sub(self.unit if self.unit is not None else self.buf.available())
 
-    def cut(self):
+    def cut(self) -> SubWrapper:
         """Return sub buffer with the remaining bytes."""
         return self.sub(self.available())
 
-    def search(self, s, buf_length=1 << 24):
+    def search(self, s: bytes, buf_length: int = 1 << 24) -> None:
         """Search for and seek to a specific pattern or throw a ValueError if not found."""
         buf = b""
         while True:
@@ -248,267 +264,275 @@ class Buf(object):
                 self.seek(-overread, 1)
                 return
 
-    def ru8(self):
+    def ru8(self) -> int:
         """Read an 8-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(1), "big")
 
-    def ru16(self):
+    def ru16(self) -> int:
         """Read a 16-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(2), "big")
 
-    def ru24(self):
+    def ru24(self) -> int:
         """Read a 24-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(3), "big")
 
-    def ru32(self):
+    def ru32(self) -> int:
         """Read a 32-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(4), "big")
 
-    def ru64(self):
+    def ru64(self) -> int:
         """Read a 64-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(8), "big")
 
-    def ri8(self):
+    def ri8(self) -> int:
         """Read an 8-bit signed big-endian integer."""
         return int.from_bytes(self.read(1), "big", signed=True)
 
-    def ri16(self):
+    def ri16(self) -> int:
         """Read a 16-bit signed big-endian integer."""
         return int.from_bytes(self.read(2), "big", signed=True)
 
-    def ri24(self):
+    def ri24(self) -> int:
         """Read a 24-bit signed big-endian integer."""
         return int.from_bytes(self.read(3), "big", signed=True)
 
-    def ri32(self):
+    def ri32(self) -> int:
         """Read a 32-bit signed big-endian integer."""
         return int.from_bytes(self.read(4), "big", signed=True)
 
-    def ri64(self):
+    def ri64(self) -> int:
         """Read a 64-bit signed big-endian integer."""
         return int.from_bytes(self.read(8), "big", signed=True)
 
-    def ru8l(self):
+    def ru8l(self) -> int:
         """Read an 8-bit unsigned little-endian integer."""
         return int.from_bytes(self.read(1), "little")
 
-    def ru16l(self):
+    def ru16l(self) -> int:
         """Read a 16-bit unsigned little-endian integer."""
         return int.from_bytes(self.read(2), "little")
 
-    def ru24l(self):
+    def ru24l(self) -> int:
         """Read a 24-bit unsigned little-endian integer."""
         return int.from_bytes(self.read(3), "little")
 
-    def ru32l(self):
+    def ru32l(self) -> int:
         """Read a 32-bit unsigned little-endian integer."""
         return int.from_bytes(self.read(4), "little")
 
-    def ru64l(self):
+    def ru64l(self) -> int:
         """Read a 64-bit unsigned little-endian integer."""
         return int.from_bytes(self.read(8), "little")
 
-    def ri8l(self):
+    def ri8l(self) -> int:
         """Read an 8-bit signed little-endian integer."""
         return int.from_bytes(self.read(1), "little", signed=True)
 
-    def ri16l(self):
+    def ri16l(self) -> int:
         """Read a 16-bit signed little-endian integer."""
         return int.from_bytes(self.read(2), "little", signed=True)
 
-    def ri24l(self):
+    def ri24l(self) -> int:
         """Read a 24-bit signed little-endian integer."""
         return int.from_bytes(self.read(3), "little", signed=True)
 
-    def ri32l(self):
+    def ri32l(self) -> int:
         """Read a 32-bit signed little-endian integer."""
         return int.from_bytes(self.read(4), "little", signed=True)
 
-    def ri64l(self):
+    def ri64l(self) -> int:
         """Read a 64-bit signed little-endian integer."""
         return int.from_bytes(self.read(8), "little", signed=True)
 
-    def rf16(self):
+    def rf16(self) -> float:
         """Read a 16-bit big-endian floating point number."""
         return struct.unpack(">e", self.read(2))[0]
 
-    def rf32(self):
+    def rf32(self) -> float:
         """Read a 32-bit big-endian floating point number."""
         return struct.unpack(">f", self.read(4))[0]
 
-    def rf64(self):
+    def rf64(self) -> float:
         """Read a 64-bit big-endian floating point number."""
         return struct.unpack(">d", self.read(8))[0]
 
-    def rf16l(self):
+    def rf16l(self) -> float:
         """Read a 16-bit litle-endian floating point number."""
         return struct.unpack("<e", self.read(2))[0]
 
-    def rf32l(self):
+    def rf32l(self) -> float:
         """Read a 32-bit litle-endian floating point number."""
         return struct.unpack("<f", self.read(4))[0]
 
-    def rf64l(self):
+    def rf64l(self) -> float:
         """Read a 64-bit litle-endian floating point number."""
         return struct.unpack("<d", self.read(8))[0]
 
-    def rfp16(self):
+    def rfp16(self) -> float:
         """Read an 8.8 unsigned big-endian fixed point number."""
         return self.ru16() / 256
 
-    def rfp32(self):
+    def rfp32(self) -> float:
         """Read a 16.16 unsigned big-endian fixed point number."""
         return self.ru32() / 65536
 
-    def rsfp16(self):
+    def rsfp16(self) -> float:
         """Read an 8.8 signed big-endian fixed point number."""
         return self.ri16() / 256
 
-    def rsfp32(self):
+    def rsfp32(self) -> float:
         """Read a 16.16 signed big-endian fixed point number."""
         return self.ri32() / 65536
 
-    def rfp16l(self):
+    def rfp16l(self) -> float:
         """Read an 8.8 unsigned little-endian fixed point number."""
         return self.ru16l() / 256
 
-    def rfp32l(self):
+    def rfp32l(self) -> float:
         """Read a 16.16 unsigned little-endian fixed point number."""
         return self.ru32l() / 65536
 
-    def rsfp16l(self):
+    def rsfp16l(self) -> float:
         """Read an 8.8 signed little-endian fixed point number."""
         return self.ri16l() / 256
 
-    def rsfp32l(self):
+    def rsfp32l(self) -> float:
         """Read a 16.16 signed little-endian fixed point number."""
         return self.ri32l() / 65536
 
-    def pu8(self):
+    def pu8(self) -> int:
         """Peek an 8-bit unsigned big-endian integer."""
         return int.from_bytes(self.peek(1), "big")
 
-    def pu16(self):
+    def pu16(self) -> int:
         """Peek a 16-bit unsigned big-endian integer."""
         return int.from_bytes(self.peek(2), "big")
 
-    def pu24(self):
+    def pu24(self) -> int:
         """Peek a 24-bit unsigned big-endian integer."""
         return int.from_bytes(self.peek(3), "big")
 
-    def pu32(self):
+    def pu32(self) -> int:
         """Peek a 32-bit unsigned big-endian integer."""
         return int.from_bytes(self.peek(4), "big")
 
-    def pu64(self):
+    def pu64(self) -> int:
         """Peek a 64-bit unsigned big-endian integer."""
         return int.from_bytes(self.peek(8), "big")
 
-    def pi8(self):
+    def pi8(self) -> int:
         """Peek an 8-bit signed big-endian integer."""
         return int.from_bytes(self.peek(1), "big", signed=True)
 
-    def pi16(self):
+    def pi16(self) -> int:
         """Peek a 16-bit signed big-endian integer."""
         return int.from_bytes(self.peek(2), "big", signed=True)
 
-    def pi24(self):
+    def pi24(self) -> int:
         """Peek a 24-bit signed big-endian integer."""
         return int.from_bytes(self.peek(3), "big", signed=True)
 
-    def pi32(self):
+    def pi32(self) -> int:
         """Peek a 32-bit signed big-endian integer."""
         return int.from_bytes(self.peek(4), "big", signed=True)
 
-    def pi64(self):
+    def pi64(self) -> int:
         """Peek a 64-bit signed big-endian integer."""
         return int.from_bytes(self.peek(8), "big", signed=True)
 
-    def pu8l(self):
+    def pu8l(self) -> int:
         """Peek an 8-bit unsigned little-endian integer."""
         return int.from_bytes(self.peek(1), "little")
 
-    def pu16l(self):
+    def pu16l(self) -> int:
         """Peek a 16-bit unsigned little-endian integer."""
         return int.from_bytes(self.peek(2), "little")
 
-    def pu24l(self):
+    def pu24l(self) -> int:
         """Peek a 24-bit unsigned little-endian integer."""
         return int.from_bytes(self.peek(3), "little")
 
-    def pu32l(self):
+    def pu32l(self) -> int:
         """Peek a 32-bit unsigned little-endian integer."""
         return int.from_bytes(self.peek(4), "little")
 
-    def pu64l(self):
+    def pu64l(self) -> int:
         """Peek a 64-bit unsigned little-endian integer."""
         return int.from_bytes(self.peek(8), "little")
 
-    def pi8l(self):
+    def pi8l(self) -> int:
         """Peek an 8-bit signed little-endian integer."""
         return int.from_bytes(self.peek(1), "little", signed=True)
 
-    def pi16l(self):
+    def pi16l(self) -> int:
         """Peek a 16-bit signed little-endian integer."""
         return int.from_bytes(self.peek(2), "little", signed=True)
 
-    def pi24l(self):
+    def pi24l(self) -> int:
         """Peek a 24-bit signed little-endian integer."""
         return int.from_bytes(self.peek(3), "little", signed=True)
 
-    def pi32l(self):
+    def pi32l(self) -> int:
         """Peek a 32-bit signed little-endian integer."""
         return int.from_bytes(self.peek(4), "little", signed=True)
 
-    def pi64l(self):
+    def pi64l(self) -> int:
         """Peek a 64-bit signed little-endian integer."""
         return int.from_bytes(self.peek(8), "little", signed=True)
 
-    def pf32(self):
+    def pf16(self) -> float:
+        """Peek a 16-bit big-endian floating point number."""
+        return struct.unpack(">e", self.peek(2))[0]
+
+    def pf32(self) -> float:
         """Peek a 32-bit big-endian floating point number."""
         return struct.unpack(">f", self.peek(4))[0]
 
-    def pf64(self):
+    def pf64(self) -> float:
         """Peek a 64-bit big-endian floating point number."""
         return struct.unpack(">d", self.peek(8))[0]
 
-    def pf32l(self):
+    def pf16l(self) -> float:
+        """Peek a 16-bit little-endian floating point number."""
+        return struct.unpack("<e", self.peek(2))[0]
+
+    def pf32l(self) -> float:
         """Peek a 32-bit litle-endian floating point number."""
         return struct.unpack("<f", self.peek(4))[0]
 
-    def pf64l(self):
+    def pf64l(self) -> float:
         """Peek a 64-bit litle-endian floating point number."""
         return struct.unpack("<d", self.peek(8))[0]
 
-    def pfp16(self):
+    def pfp16(self) -> float:
         """Peek an 8.8 unsigned big-endian fixed point number."""
         return self.ru16() / 256
 
-    def pfp32(self):
+    def pfp32(self) -> float:
         """Peek a 16.16 unsigned big-endian fixed point number."""
         return self.ru32l() / 65536
 
-    def psfp16(self):
+    def psfp16(self) -> float:
         """Peek an 8.8 signed big-endian fixed point number."""
         return self.ri16l() / 256
 
-    def psfp32(self):
+    def psfp32(self) -> float:
         """Peek a 16.16 signed big-endian fixed point number."""
         return self.ri32l() / 65536
 
-    def pfp16l(self):
+    def pfp16l(self) -> float:
         """Peek an 8.8 unsigned little-endian fixed point number."""
         return self.ru16l() / 256
 
-    def pfp32l(self):
+    def pfp32l(self) -> float:
         """Peek a 16.16 unsigned little-endian fixed point number."""
         return self.ru32l() / 65536
 
-    def psfp16l(self):
+    def psfp16l(self) -> float:
         """Peek an 8.8 signed little-endian fixed point number."""
         return self.ri16l() / 256
 
-    def psfp32l(self):
+    def psfp32l(self) -> float:
         """Peek a 16.16 signed little-endian fixed point number."""
         return self.ri32l() / 65536
 

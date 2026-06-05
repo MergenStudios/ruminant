@@ -9,3 +9,6 @@ class OidNode(TypedDict):
 
 
 OidRegistry: TypeAlias = dict[int, OidNode]
+
+BufStack: TypeAlias = list[tuple[int | None, int]]
+BufBackup: TypeAlias = tuple[int | None, int, BufStack, int, int, int, int]
