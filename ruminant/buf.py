@@ -253,19 +253,19 @@ class Buf(object):
         return int.from_bytes(self.read(1), "big")
 
     def ru16(self):
-        """Read an 16-bit unsigned big-endian integer."""
+        """Read a 16-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(2), "big")
 
     def ru24(self):
-        """Read an 24-bit unsigned big-endian integer."""
+        """Read a 24-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(3), "big")
 
     def ru32(self):
-        """Read an 32-bit unsigned big-endian integer."""
+        """Read a 32-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(4), "big")
 
     def ru64(self):
-        """Read an 64-bit unsigned big-endian integer."""
+        """Read a 64-bit unsigned big-endian integer."""
         return int.from_bytes(self.read(8), "big")
 
     def ri8(self):
@@ -273,91 +273,115 @@ class Buf(object):
         return int.from_bytes(self.read(1), "big", signed=True)
 
     def ri16(self):
-        """Read an 16-bit signed big-endian integer."""
+        """Read a 16-bit signed big-endian integer."""
         return int.from_bytes(self.read(2), "big", signed=True)
 
     def ri24(self):
-        """Read an 24-bit signed big-endian integer."""
+        """Read a 24-bit signed big-endian integer."""
         return int.from_bytes(self.read(3), "big", signed=True)
 
     def ri32(self):
-        """Read an 32-bit signed big-endian integer."""
+        """Read a 32-bit signed big-endian integer."""
         return int.from_bytes(self.read(4), "big", signed=True)
 
     def ri64(self):
-        """Read an 64-bit signed big-endian integer."""
+        """Read a 64-bit signed big-endian integer."""
         return int.from_bytes(self.read(8), "big", signed=True)
 
     def ru8l(self):
+        """Read an 8-bit unsigned little-endian integer."""
         return int.from_bytes(self.read(1), "little")
 
     def ru16l(self):
+        """Read a 16-bit unsigned little-endian integer."""
         return int.from_bytes(self.read(2), "little")
 
     def ru24l(self):
+        """Read a 24-bit unsigned little-endian integer."""
         return int.from_bytes(self.read(3), "little")
 
     def ru32l(self):
+        """Read a 32-bit unsigned little-endian integer."""
         return int.from_bytes(self.read(4), "little")
 
     def ru64l(self):
+        """Read a 64-bit unsigned little-endian integer."""
         return int.from_bytes(self.read(8), "little")
 
     def ri8l(self):
+        """Read an 8-bit signed little-endian integer."""
         return int.from_bytes(self.read(1), "little", signed=True)
 
     def ri16l(self):
+        """Read a 16-bit signed little-endian integer."""
         return int.from_bytes(self.read(2), "little", signed=True)
 
     def ri24l(self):
+        """Read a 24-bit signed little-endian integer."""
         return int.from_bytes(self.read(3), "little", signed=True)
 
     def ri32l(self):
+        """Read a 32-bit signed little-endian integer."""
         return int.from_bytes(self.read(4), "little", signed=True)
 
     def ri64l(self):
+        """Read a 64-bit signed little-endian integer."""
         return int.from_bytes(self.read(8), "little", signed=True)
 
     def rf16(self):
+        """Read a 16-bit big-endian floating point number."""
         return struct.unpack(">e", self.read(2))[0]
 
     def rf32(self):
+        """Read a 32-bit big-endian floating point number."""
         return struct.unpack(">f", self.read(4))[0]
 
     def rf64(self):
+        """Read a 64-bit big-endian floating point number."""
         return struct.unpack(">d", self.read(8))[0]
 
     def rf16l(self):
+        """Read a 16-bit litle-endian floating point number."""
         return struct.unpack("<e", self.read(2))[0]
 
     def rf32l(self):
+        """Read a 32-bit litle-endian floating point number."""
         return struct.unpack("<f", self.read(4))[0]
 
     def rf64l(self):
+        """Read a 64-bit litle-endian floating point number."""
         return struct.unpack("<d", self.read(8))[0]
 
     def rfp16(self):
+        """Read an 8.8 unsigned big-endian fixed point number."""
         return self.ru16() / 256
 
     def rfp32(self):
+        """Read a 16.16 unsigned big-endian fixed point number."""
         return self.ru32() / 65536
 
     def rsfp16(self):
+        """Read an 8.8 signed big-endian fixed point number."""
         return self.ri16() / 256
 
     def rsfp32(self):
+        """Read a 16.16 signed big-endian fixed point number."""
         return self.ri32() / 65536
 
     def rfp16l(self):
+        """Read an 8.8 unsigned little-endian fixed point number."""
         return self.ru16l() / 256
 
     def rfp32l(self):
+        """Read a 16.16 unsigned little-endian fixed point number."""
         return self.ru32l() / 65536
 
     def rsfp16l(self):
+        """Read an 8.8 signed little-endian fixed point number."""
         return self.ri16l() / 256
 
     def rsfp32l(self):
+        """Read a 16.16 signed little-endian fixed point number."""
         return self.ri32l() / 65536
 
     def pu8(self):
