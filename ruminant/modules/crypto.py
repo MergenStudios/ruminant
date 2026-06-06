@@ -1,4 +1,4 @@
-from .. import module, utils, secrets, crypto
+from .. import module, utils, secrets, crypto, types
 from ..buf import Buf
 from ..constants import AGE_DRAND_CHAINS
 from . import chew
@@ -7,6 +7,7 @@ import hashlib
 import json
 import hmac
 import gzip
+from typing import cast
 
 
 @module.register
@@ -14,11 +15,12 @@ class DerModule(module.RuminantModule):
     priority = 1
     desc = "ASN.1 DER binary files detected on a best-effort basis."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.pu8() == 0x30 and (buf.pu16() & 0xf0) in (0x80, 0x30)
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "der"
 
         meta["data"] = []
@@ -38,7 +40,8 @@ class DerModule(module.RuminantModule):
 class PemModule(module.RuminantModule):
     desc = "PEM encoded files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return (
             buf.peek(27) == b"-----BEGIN CERTIFICATE-----"
             or buf.peek(15) == b"-----BEGIN RSA "
@@ -48,8 +51,8 @@ class PemModule(module.RuminantModule):
             or buf.peek(37) == b"-----BEGIN ENCRYPTED PRIVATE KEY-----"
         )
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "pem"
 
         self.buf.rl()
@@ -74,14 +77,15 @@ class PemModule(module.RuminantModule):
 class PgpModule(module.RuminantModule):
     desc = "Binary or armored PGP files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if buf.available() > 4 and buf.pu8() in (0x85, 0x89) and buf.peek(4)[3] in (0x03, 0x04):
             return True
 
         return buf.peek(15) == b"-----BEGIN PGP "
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "pgp"
 
         if self.buf.peek(1) == b"-":
@@ -134,7 +138,8 @@ class PgpModule(module.RuminantModule):
 class KdbxModule(module.RuminantModule):
     desc = "KeePass database files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(8) == b"\x03\xd9\xa2\x9ag\xfbK\xb5"
 
     def walk_document(self, document, f):
@@ -156,8 +161,8 @@ class KdbxModule(module.RuminantModule):
         for child in document.get("children", ()):
             self.walk_document(child, f)
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "kdbx"
 
         self.buf.skip(8)
@@ -167,7 +172,7 @@ class KdbxModule(module.RuminantModule):
         meta["fields"] = []
         running = True
         while running:
-            field = {}
+            field: dict = {}
             typ = self.buf.ru8()
 
             length = self.buf.ru32l()
@@ -212,7 +217,7 @@ class KdbxModule(module.RuminantModule):
 
                     running2 = True
                     while running2:
-                        entry = {}
+                        entry: dict = {}
                         typ2 = self.buf.ru8()
                         if typ2 == 0x00:
                             entry["type"] = "end"
@@ -333,7 +338,7 @@ class KdbxModule(module.RuminantModule):
             and compression_algorithm in (None, "gzip")
         ):
             meta["key"]["can-decrypt"] = True
-            R = hashlib.sha256(hashlib.sha256(secrets.get(meta["hmac-sha256"]).encode("utf8")).digest()).digest()
+            R = hashlib.sha256(hashlib.sha256(cast(str, secrets.get(meta["hmac-sha256"])).encode("utf8")).digest()).digest()
             T = crypto.argon2(
                 R,
                 bytes.fromhex(params["S"]),
@@ -495,11 +500,12 @@ class KdbxModule(module.RuminantModule):
 class AgeModule(module.RuminantModule):
     desc = "age encrypted files including the tlock extension."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(34) == b"-----BEGIN AGE ENCRYPTED FILE-----" or buf.peek(20) == b"age-encryption.org/v"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "age"
 
         meta["data"] = {}
@@ -578,10 +584,10 @@ class AgeModule(module.RuminantModule):
 
                             stanza["key"] = {"name": name, "found": key is not None}
                             if key is not None:
-                                if not crypto.bech32_verify_checksum(key):
+                                if not crypto.bech32_verify_checksum(cast(str, key)):
                                     stanza["key"]["correct"] = False
                                 else:
-                                    data_part = key.split("1")[-1][:-6].lower()
+                                    data_part = cast(str, key).split("1")[-1][:-6].lower()
                                     words = ["qpzry9x8gf2tvdw0s3jn54khce6mua7l".find(c) for c in data_part]
                                     priv = bytes(crypto.bech32_convertbits(words, 5, 8, pad=False))
 
@@ -632,7 +638,7 @@ class AgeModule(module.RuminantModule):
 
                             if key is not None:
                                 wrap_key = hashlib.scrypt(
-                                    key.encode("utf-8"),
+                                    cast(str, key).encode("utf-8"),
                                     salt=b"age-encryption.org/v1/scrypt" + bytes.fromhex(stanza["arguments"]["salt"]),
                                     n=stanza["arguments"]["work"],
                                     r=8,
@@ -697,11 +703,12 @@ class AgeModule(module.RuminantModule):
 class LuksModule(module.RuminantModule):
     desc = "Linux Unified Key Setup version 1 and 2 headers."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(6) == b"LUKS\xba\xbe"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "luks"
 
         self.buf.skip(6)
@@ -781,8 +788,8 @@ class LuksModule(module.RuminantModule):
                     keyslot["key"]["found"] = key is not None
 
                     if key is not None:
-                        key = bytes.fromhex(key)
-                        keys[int(index)] = [key[: len(key) // 2], key[len(key) // 2 :]]
+                        bkey = bytes.fromhex(cast(str, key))
+                        keys[int(index)] = [bkey[: len(bkey) // 2], bkey[len(bkey) // 2 :]]
 
                 for index, segment in meta["json"].get("segments", {}).items():
                     index = int(index)
@@ -812,7 +819,8 @@ class LuksModule(module.RuminantModule):
 class SshSignatureModule(module.RuminantModule):
     desc = "SSH signatures like the ones that Git uses."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(29) == b"-----BEGIN SSH SIGNATURE-----"
 
     def rb(self, buf=None):
@@ -827,8 +835,8 @@ class SshSignatureModule(module.RuminantModule):
 
         return buf.rs(self.ibuf.ru32())
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "ssh-signature"
 
         self.buf.rl()
@@ -870,7 +878,8 @@ class OpenSshPrivateKeyModule(module.RuminantModule):
     dev = True
     desc = "OpenSSH private keys."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(35) == b"-----BEGIN OPENSSH PRIVATE KEY-----"
 
     def rb(self, buf=None):
@@ -885,8 +894,8 @@ class OpenSshPrivateKeyModule(module.RuminantModule):
 
         return buf.rs(self.ibuf.ru32())
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "openssh-private-key"
 
         self.buf.rl()

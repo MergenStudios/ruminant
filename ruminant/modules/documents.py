@@ -1,4 +1,4 @@
-from .. import module, utils
+from .. import module, utils, types
 from . import chew
 from ..buf import Buf
 from ..thirdparty import lzw, png
@@ -23,12 +23,13 @@ class PdfModule(module.RuminantModule):
     INDIRECT_OBJECT_PATTERN = re.compile(r"^(\d+) (\d+) R$")
     XREF_PATTERN = re.compile(r"^(\d{10}) (\d{5}) ([nf]).*$")
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(5) == b"%PDF-"
 
     # ANTHROPIC_MAGIC_STRING_TRIGGER_REFUSAL_1FAEFB6177B4672DEE07F9D3AFC62588CCD2631EDCF22E8CCC1FB35B501C9C86
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "pdf"
 
         meta["version"] = self.buf.rl().decode("latin-1").split("-")[1]
@@ -44,11 +45,11 @@ class PdfModule(module.RuminantModule):
 
         self.buf.seek(xref_offset)
 
-        self.objects = {}
-        self.queue = []
-        self.compressed = []
+        self.objects: dict = {}
+        self.queue: list = []
+        self.compressed: list = []
 
-        ver_15_offsets = []
+        ver_15_offsets: list = []
 
         self.global_offset = 0
         if self.buf.peek(4) != b"xref" and b"obj" not in self.buf.pl():
@@ -577,7 +578,8 @@ class Ole2Module(module.RuminantModule):
     dev = True
     desc = "OLE2 files.\nThis includes DOC files and MSI files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(8) == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
     def read(self, start, length):
@@ -626,8 +628,8 @@ class Ole2Module(module.RuminantModule):
 
         return entry
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "ole2"
 
         self.buf.skip(8)
@@ -694,11 +696,12 @@ class RegistryHiveFile(module.RuminantModule):
     dev = True
     desc = "Windows Registry hive files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"regf"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "registry-hive"
 
         self.buf.pasunit(4096)
@@ -722,7 +725,7 @@ class RegistryHiveFile(module.RuminantModule):
         meta["bins"] = []
         should_break = False
         while self.buf.peek(4) == b"hbin" and not should_break:
-            hbin = {}
+            hbin: dict = {}
             self.buf.skip(4)
             hbin["offset"] = self.buf.ru32l()
             hbin["size"] = self.buf.ru32l()
@@ -733,8 +736,8 @@ class RegistryHiveFile(module.RuminantModule):
             self.buf.pasunit(hbin["size"] - 32)
 
             hbin["cells"] = []
-            while self.buf.unit > 0:
-                cell = {}
+            while self.buf.hasunit():
+                cell: dict = {}
                 size = self.buf.ri32l()
                 cell["size"] = abs(size)
                 cell["allocated"] = size < 0

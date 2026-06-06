@@ -563,7 +563,7 @@ def bech32_create_checksum(hrp: str, data: list[int]) -> list[int]:
     return [(polymod >> 5 * (5 - i)) & 31 for i in range(6)]
 
 
-def bech32_convertbits(data: bytes, frombits: int, tobits: int, pad: bool = True) -> list[int]:
+def bech32_convertbits(data: list[int] | bytes, frombits: int, tobits: int, pad: bool = True) -> list[int]:
     acc = 0
     bits = 0
     ret = []

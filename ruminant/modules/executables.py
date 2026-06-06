@@ -1,4 +1,4 @@
-from .. import module, utils, constants
+from .. import module, utils, constants, types
 from ..buf import Buf
 from . import chew
 import time
@@ -10,7 +10,8 @@ import hashlib
 class WasmModule(module.RuminantModule):
     desc = "WASM module files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"\x00asm"
 
     def read_name(self):
@@ -50,8 +51,8 @@ class WasmModule(module.RuminantModule):
 
         return [self.read_element(short) for i in range(0, count)]
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "wasm"
 
         self.buf.skip(4)
@@ -59,7 +60,7 @@ class WasmModule(module.RuminantModule):
 
         meta["sections"] = []
         while self.buf.available() > 0:
-            section = {}
+            section: dict = {}
 
             section_id = self.buf.ru8()
             section_length = self.buf.ruleb()
@@ -94,8 +95,8 @@ class WasmModule(module.RuminantModule):
                                 case 2:
                                     section["data"]["subsections"] = []
 
-                                    while self.buf.unit > 0:
-                                        subsection = {}
+                                    while self.buf.hasunit():
+                                        subsection: dict = {}
                                         typ2 = self.buf.ru8()
 
                                         self.buf.pushunit()
@@ -117,7 +118,7 @@ class WasmModule(module.RuminantModule):
                                     section["unknown"] = True
                         case ".debug_str":
                             section["data"]["strings"] = []
-                            while self.buf.unit > 0:
+                            while self.buf.hasunit():
                                 section["data"]["strings"].append(self.buf.rzs())
 
                             for i in range(0, len(section["data"]["strings"])):
@@ -407,7 +408,8 @@ class JavaClassModule(module.RuminantModule):
         "impdep2",
     ]
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"\xca\xfe\xba\xbe"
 
     def resolve(self, index):
@@ -530,7 +532,7 @@ class JavaClassModule(module.RuminantModule):
                     val["code"] = {}
                     start = self.buf.tell()
                     wide = 0
-                    while self.buf.unit > 0:
+                    while self.buf.hasunit():
                         wide = max(0, wide - 1)
 
                         pc = self.buf.tell() - start
@@ -862,8 +864,8 @@ class JavaClassModule(module.RuminantModule):
 
             target["attributes"][key] = val
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         self.meta = meta
 
         meta["type"] = "java-class"
@@ -1090,14 +1092,15 @@ class JavaClassModule(module.RuminantModule):
 class ElfModule(module.RuminantModule):
     desc = "ELF files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"\x7fELF"
 
     def hex(self, val):
         return {"raw": val, "hex": "0x" + hex(val)[2:].zfill(16 if self.wide else 8)}
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "elf"
 
         self.buf.skip(4)
@@ -1368,7 +1371,7 @@ class ElfModule(module.RuminantModule):
         self.buf.seek(meta["header"]["shoff"])
         meta["section-headers"] = []
         for i in range(0, meta["header"]["shnum"]):
-            sh = {}
+            sh: dict = {}
             sh["name"] = {"offset": self.buf.ru32l() if self.little else self.buf.ru32()}
             sh["type"] = utils.unraw(
                 self.buf.ru32l() if self.little else self.buf.ru32(),
@@ -1521,7 +1524,7 @@ class ElfModule(module.RuminantModule):
                                 sh["parsed"]["string"] = self.buf.rs(self.buf.unit)
                             case "GNU", 0x00000005:
                                 sh["parsed"]["properties"] = []
-                                while self.buf.unit > 0:
+                                while self.buf.hasunit():
                                     prop = {}
                                     prop["type"] = utils.unraw(
                                         self.buf.ru32l() if self.little else self.buf.ru32(),
@@ -1560,7 +1563,7 @@ class ElfModule(module.RuminantModule):
                             case "Android", 1:
                                 sh["parsed"]["api"] = self.buf.ru32l()
 
-                                if self.buf.unit >= 128:
+                                if self.buf.unit is not None and self.buf.unit >= 128:
                                     sh["parsed"]["ndk-version"] = self.buf.rs(64)
                                     sh["parsed"]["ndk-build-number"] = self.buf.rs(64)
                             case _, _:
@@ -1571,7 +1574,7 @@ class ElfModule(module.RuminantModule):
                     elif sh["name"]["string"] == ".symtab":
                         sh["parsed"]["symbols"] = []
                         while self.buf.available() > 0:
-                            sym = {}
+                            sym: dict = {}
                             sym["name"] = {"index": self.buf.ru32l() if self.little else self.buf.ru32()}
                             self.namebuf.seek(sym["name"]["index"])
                             sym["name"]["string"] = self.namebuf.rzs()
@@ -1633,7 +1636,8 @@ class ElfModule(module.RuminantModule):
 class PeModule(module.RuminantModule):
     desc = "PE files like EXE or EFI files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(2) == b"MZ"
 
     def hex(self, val):
@@ -1750,7 +1754,7 @@ class PeModule(module.RuminantModule):
                 child = True
             case "Translation":
                 rsrc["value"]["languages"] = []
-                while self.buf.unit > 0:
+                while self.buf.hasunit():
                     lang = {}
                     lang["language"] = utils.unraw(self.buf.ru16l(), 2, constants.MICROSOFT_LCIDS, True)
                     lang["ibm-codepage"] = utils.unraw(self.buf.ru16l(), 2, {1200: "UTF-16"}, True)
@@ -1797,7 +1801,7 @@ class PeModule(module.RuminantModule):
             rsrc["value"]["padding"] = self.buf.rh((4 - self.buf.tell() % 4) if (self.buf.tell() % 4) else 0)
 
             rsrc["value"]["children"] = []
-            while self.buf.unit > 0:
+            while self.buf.hasunit():
                 rsrc["value"]["children"].append(self.read_resource())
 
         self.buf.sapunit()
@@ -1889,8 +1893,8 @@ class PeModule(module.RuminantModule):
 
         return tbl
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "pe"
 
         self.wide = False
@@ -2068,10 +2072,10 @@ class PeModule(module.RuminantModule):
                     meta["optional-header"]["number-of-rva-and-sizes"] = self.buf.ru32l()
                     meta["optional-header"]["rvas"] = []
                     for i in range(0, meta["optional-header"]["number-of-rva-and-sizes"]):  # noqa: E131, E125
-                        if self.buf.unit < 8:
+                        if self.buf.unit is not None and self.buf.unit < 8:
                             break
 
-                        rva = {}
+                        rva: dict = {}
                         rva["name"] = [
                             "Export Table",
                             "Import Table",
@@ -2161,8 +2165,8 @@ class PeModule(module.RuminantModule):
 
                         rva["parsed"] = {}
                         rva["parsed"]["entries"] = []
-                        while self.buf.unit > 0:
-                            entry = {}
+                        while self.buf.hasunit():
+                            entry: dict = {}
                             entry["length"] = self.buf.ru32l()
                             self.buf.pasunit(entry["length"] - 4)
                             rev = self.buf.ru16l()
@@ -2172,11 +2176,13 @@ class PeModule(module.RuminantModule):
                                 2,
                                 {0x0001: "X509", 0x0002: "PKCS_SIGNED_DATA"},
                             )
-                            entry["blob"] = chew(self.buf.peek(self.buf.unit), blob_mode=True)
+                            entry["blob"] = chew(
+                                self.buf.peek(self.buf.unit if self.buf.unit is not None else 0), blob_mode=True
+                            )
                             entry["signature"] = utils.read_der(self.buf)
 
                             self.buf.sapunit()
-                            if self.buf.unit >= 8 and entry["length"] % 8 != 0:
+                            if self.buf.unit is not None and self.buf.unit >= 8 and entry["length"] % 8 != 0:
                                 self.buf.skip(8 - (entry["length"] % 8))
 
                             rva["parsed"]["entries"].append(entry)
@@ -2226,7 +2232,7 @@ class PeModule(module.RuminantModule):
                         rva["parsed"] = {}
 
                         rva["parsed"]["entries"] = []
-                        while self.buf.unit >= 28:
+                        while self.buf.unit is not None and self.buf.unit >= 28:
                             entry = {}
                             entry["characteristics"] = utils.unpack_flags(self.buf.ru32l(), ())
                             entry["timestamp"] = utils.unix_to_date(self.buf.ru32l())
@@ -2325,7 +2331,7 @@ class PeModule(module.RuminantModule):
                         rva["parsed"] = {}
                         rva["parsed"]["entries"] = []
 
-                        while self.buf.unit >= 20 and sum(self.buf.peek(20)) > 0:
+                        while self.buf.unit is not None and self.buf.unit >= 20 and sum(self.buf.peek(20)) > 0:
                             entry = {}
 
                             entry["original-thunks"] = []
@@ -2428,7 +2434,8 @@ class PeModule(module.RuminantModule):
 class SpirVModule(module.RuminantModule):
     desc = "SPIR-V Vulkan shader files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) in (b"\x07\x23\x02\x03", b"\x03\x02\x23\x07")
 
     def read(self):
@@ -2442,7 +2449,7 @@ class SpirVModule(module.RuminantModule):
             func = self.read
 
         vals = []
-        while self.buf.unit > 0:
+        while self.buf.hasunit():
             vals.append(func())
 
         return vals
@@ -2474,8 +2481,8 @@ class SpirVModule(module.RuminantModule):
 
         return val
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "spir-v"
 
         meta["header"] = {}
@@ -2639,9 +2646,9 @@ class SpirVModule(module.RuminantModule):
                         True,
                     )
                     inst["arguments"]["version"] = self.read()
-                    if self.buf.unit > 0:
+                    if self.buf.hasunit():
                         inst["arguments"]["file-id"] = self.read()
-                    if self.buf.unit > 0:
+                    if self.buf.hasunit():
                         inst["arguments"]["source"] = self.read_string()
                 case "Name":
                     inst["arguments"]["target-id"] = self.read()
@@ -2674,7 +2681,7 @@ class SpirVModule(module.RuminantModule):
                     inst["arguments"]["result-type-id"] = self.read()
                     inst["arguments"]["result-id"] = self.read()
                     inst["arguments"]["storage-class"] = utils.unraw(self.read(), 4, constants.SPIRV_STORAGE_CLASSES, True)
-                    if self.buf.unit > 0:
+                    if self.buf.hasunit():
                         inst["arguments"]["initializer-id"] = self.read()
                 case "Function":
                     inst["arguments"]["result-type-id"] = self.read()
@@ -2697,12 +2704,12 @@ class SpirVModule(module.RuminantModule):
                     inst["arguments"]["result-type-id"] = self.read()
                     inst["arguments"]["result-id"] = self.read()
                     inst["arguments"]["pointer-id"] = self.read()
-                    if self.buf.unit > 0:
+                    if self.buf.hasunit():
                         inst["arguments"]["pointer-id"] = self.read_memory_operands()
                 case "Store":
                     inst["arguments"]["pointer-id"] = self.read()
                     inst["arguments"]["object-id"] = self.read()
-                    if self.buf.unit > 0:
+                    if self.buf.hasunit():
                         inst["arguments"]["pointer-id"] = self.read_memory_operands()
                 case "Return" | "FunctionEnd":
                     pass
@@ -2722,7 +2729,8 @@ class PycModule(module.RuminantModule):
     dev = True
     desc = "Python compiled bytecode files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if buf.available() < 10:
             return False
 
@@ -2735,8 +2743,8 @@ class PycModule(module.RuminantModule):
 
             return buf.ru32() < int(time.time()) + (60 * 60 * 24 * 365 * 10)
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "pyc"
 
         meta["header"] = {}
@@ -2759,14 +2767,15 @@ class IntelFlashModule(module.RuminantModule):
     dev = True
     desc = "Intel-based motherboard flash dumps.\nYou can extract yours if you're on an Intel system by installing flashrom and running 'flashrom -p internal -r flash.bin'."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if buf.available() < 32:
             return False
 
         return buf.peek(20)[16:20] == b"\x5a\xa5\xf0\x0f"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "intel-flash"
 
         meta["flash-descriptor"] = {}
@@ -2816,11 +2825,8 @@ class IntelFlashModule(module.RuminantModule):
 class IntelMicrocodeModule(module.RuminantModule):
     desc = "Intel microcode files."
 
-    def valid_bcd(val):
-        return (val & 0x0f) < 10 and (val >> 4) < 10
-
-    @classmethod
-    def identify(cls, buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if buf.available() < 48:
             return False
 
@@ -2830,14 +2836,14 @@ class IntelMicrocodeModule(module.RuminantModule):
 
             buf.skip(4)
 
-            if not cls.valid_bcd(buf.ru8()):
+            if not IntelMicrocodeModule.valid_bcd(buf.ru8()):
                 return False
 
             if buf.ru8() not in (0x19, 0x20):
                 return False
 
             val = buf.ru8()
-            if not cls.valid_bcd(val) or val > 0x31:
+            if not IntelMicrocodeModule.valid_bcd(val) or val > 0x31:
                 return False
 
             if buf.ru8() not in (
@@ -2872,8 +2878,12 @@ class IntelMicrocodeModule(module.RuminantModule):
 
             return s & 0xffffffff == 0
 
-    def chew(self):
-        meta = {}
+    @staticmethod
+    def valid_bcd(val):
+        return (val & 0x0f) < 10 and (val >> 4) < 10
+
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "intel-microcode"
 
         meta["header"] = {}
@@ -2918,7 +2928,7 @@ class IntelMicrocodeModule(module.RuminantModule):
             with self.buf:
                 self.buf.skip(255)
 
-                while self.buf.unit > 4:
+                while self.buf.unit is not None and self.buf.unit > 4:
                     if self.buf.pu32l() == 17:
                         has_exponent = True
                         break
@@ -2938,7 +2948,7 @@ class IntelMicrocodeModule(module.RuminantModule):
                 e = meta["signature"]["exponent"]
 
                 with self.buf:
-                    while self.buf.unit > 256:
+                    while self.buf.unit is not None and self.buf.unit > 256:
                         c = int.from_bytes(self.buf.peek(256), "little")
                         m = pow(c, e, n)
 
@@ -2963,11 +2973,12 @@ class IntelMicrocodeModule(module.RuminantModule):
 class AOutExecutableModule(module.RuminantModule):
     desc = "a.out executables."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.pu16l() in (0x0107, 0x0108, 0x010b)
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "a.out"
 
         meta["header"] = {}
@@ -3012,7 +3023,7 @@ class AOutExecutableModule(module.RuminantModule):
 
         self.buf.pasunit(meta["header"]["symbol-table-size"])
         meta["symbols"] = []
-        while self.buf.unit > 0:
+        while self.buf.hasunit():
             symbol = {}
             symbol["name"] = self.buf.rs(8)
             symbol["type"] = utils.unraw(
@@ -3048,7 +3059,8 @@ class DexModule(module.RuminantModule):
     dev = True
     desc = "Dalvik Executable files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if buf.peek(4) != b"dex\n":
             return False
 
@@ -3060,8 +3072,8 @@ class DexModule(module.RuminantModule):
             except Exception:
                 return False
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "dex"
 
         self.buf.skip(4)
@@ -3092,7 +3104,7 @@ class DexModule(module.RuminantModule):
                 "offset": self.buf.ru32l(),
             }
 
-        if self.buf.unit > 0:
+        if self.buf.hasunit():
             meta["header"]["container-size"] = self.buf.ru32l()
             meta["header"]["header-offset"] = self.buf.ru32l()
 
@@ -3103,7 +3115,7 @@ class DexModule(module.RuminantModule):
         self.buf.pasunit(meta["header"]["string-ids"]["size"])
 
         meta["strings"] = []
-        while self.buf.unit >= 4:
+        while self.buf.unit is not None and self.buf.unit >= 4:
             offset = self.buf.ru32l()
             with self.buf:
                 self.buf.resetunit()
