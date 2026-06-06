@@ -2,19 +2,26 @@ import io
 import struct
 import uuid
 import tempfile
-from typing import Any, Self, TYPE_CHECKING
+from typing import Any, Self
 from . import types
 
-if TYPE_CHECKING:
 
-    class SubWrapper(object):
-        def __enter__(self) -> None:
-            self._offset: int
-            self._size: int
-            self._bak: types.BufBackup
+class SubWrapper(object):
+    def __init__(self, self2, size):
+        self.self2 = self2
+        self.size = size
 
-        def __exit__(self, *args) -> None:
-            pass
+    def __enter__(self):
+        self._offset = self.self2._offset
+        self._size = self.self2._size
+        self._bak = self.self2.backup()
+        self.self2._offset += self.self2.tell()
+        self.self2._size = self.size
+
+        self.self2.resetunit()
+
+    def __exit__(self, *args):
+        self.self2.restore(self._bak)
 
 
 def _decode(content: bytes, encoding: str = "utf-8") -> str:
@@ -221,23 +228,7 @@ class Buf(object):
     def sub(self, size: int) -> SubWrapper:
         """Return context manager to limit the buf to a sub buffer starting from the current cursor with a length of size."""
         assert size <= self.available(), "sub buffer is bigger than host buffer"
-
-        if not TYPE_CHECKING:
-
-            class SubWrapper(object):
-                def __enter__(self2):
-                    self2._offset = self._offset
-                    self2._size = self._size
-                    self2._bak = self.backup()
-                    self._offset += self.tell()
-                    self._size = size
-
-                    self.resetunit()
-
-                def __exit__(self2, *args):
-                    self.restore(self2._bak)
-
-        return SubWrapper()
+        return SubWrapper(self, size)
 
     def subunit(self) -> SubWrapper:
         """Return sub buffer with the limits of the current unit."""
