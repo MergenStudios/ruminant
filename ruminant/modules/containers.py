@@ -1,5 +1,5 @@
 from . import chew
-from .. import module, utils, constants, secrets
+from .. import module, utils, constants, secrets, types
 from ..buf import Buf
 
 import tempfile
@@ -7,6 +7,7 @@ import datetime
 import base64
 import zlib
 import ipaddress
+from typing import Any, cast
 
 
 @module.register
@@ -23,7 +24,8 @@ class ZipModule(module.RuminantModule):
                 c >>= 1
         CRC_TABLE[i] = c
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"\x50\x4b\x03\x04"
 
     def to_timestamp(self, dos_date, dos_time):
@@ -56,7 +58,7 @@ class ZipModule(module.RuminantModule):
 
         self.buf.pasunit(self.buf.ru32l())
 
-        while self.buf.unit > 0:
+        while self.buf.hasunit():
             signatures.append(self.read_single_signature())
 
         self.buf.sapunit()
@@ -79,7 +81,7 @@ class ZipModule(module.RuminantModule):
                 entry["payload"]["signers"] = []
                 self.buf.pasunit(self.buf.ru32l())
 
-                while self.buf.unit > 0:
+                while self.buf.hasunit():
                     signer = {}
                     self.buf.pasunit(self.buf.ru32l())
 
@@ -89,7 +91,7 @@ class ZipModule(module.RuminantModule):
                     signer["signed-data"]["digests"] = []
                     self.buf.pasunit(self.buf.ru32l())
 
-                    while self.buf.unit > 0:
+                    while self.buf.hasunit():
                         digest = {}
                         self.buf.pasunit(self.buf.ru32l())
 
@@ -110,7 +112,7 @@ class ZipModule(module.RuminantModule):
 
                     signer["signed-data"]["certificates"] = []
                     self.buf.pasunit(self.buf.ru32l())
-                    while self.buf.unit > 0:
+                    while self.buf.hasunit():
                         signer["signed-data"]["certificates"].append(utils.read_der(Buf(self.buf.read(self.buf.ru32l()))))
 
                     # certificates
@@ -123,7 +125,7 @@ class ZipModule(module.RuminantModule):
                     signer["signed-data"]["additional-attributes"] = []
                     self.buf.pasunit(self.buf.ru32l())
 
-                    while self.buf.unit > 0:
+                    while self.buf.hasunit():
                         attribute = {}
                         self.buf.pasunit(self.buf.ru32l())
 
@@ -175,7 +177,7 @@ class ZipModule(module.RuminantModule):
                 self.buf.pasunit(entry["payload"]["size"])
 
                 entry["payload"]["entries"] = []
-                while self.buf.unit > 0:
+                while self.buf.hasunit():
                     ntry = {}
                     ntry["size"] = self.buf.ru32l()
                     ntry["type"] = "Unknown"
@@ -191,7 +193,7 @@ class ZipModule(module.RuminantModule):
                             ntry["type"] = "Multiple Signatures"
                             ntry["payload"]["signatures"] = []
 
-                            while self.buf.unit > 0:
+                            while self.buf.hasunit():
                                 sig = {}
                                 sig["size"] = self.buf.ru32l()
 
@@ -209,7 +211,7 @@ class ZipModule(module.RuminantModule):
                             self.buf.pasunit(ntry["payload"]["size"])
 
                             ntry["payload"]["entries"] = []
-                            while self.buf.unit > 0:
+                            while self.buf.hasunit():
                                 ntry["payload"]["entries"].append(self.read_attribute(True))
 
                             self.buf.sapunit()
@@ -254,8 +256,8 @@ class ZipModule(module.RuminantModule):
 
         return K0, K1, K2
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "zip"
 
         self.buf.search(b"\x50\x4b\x05\x06")
@@ -278,7 +280,7 @@ class ZipModule(module.RuminantModule):
         while self.buf.pu32() == 0x504b0102:
             self.buf.skip(4)
 
-            file = {}
+            file: dict = {}
             file["meta"] = {}
             temp = self.buf.ru16l()
             file["meta"]["version-producer"] = {
@@ -388,22 +390,23 @@ class ZipModule(module.RuminantModule):
             self.buf.pasunit(extra_field_length)
 
             file["meta"]["extra-field"] = []
-            while self.buf.unit > 0:
-                entry = {}
+            while self.buf.hasunit():
+                entry: dict = {}
                 typ = self.buf.ru16l()
                 entry["type"] = None
                 entry["length"] = self.buf.ru16l()
-                entry["payload"] = {}
+                payload: dict = {}
+                payload = payload
 
                 self.buf.pasunit(entry["length"])
                 match typ:
                     case 0x000a:
                         entry["type"] = "NTFS"
-                        entry["payload"]["reserved"] = self.buf.ru32l()
+                        payload["reserved"] = self.buf.ru32l()
 
-                        entry["payload"]["entries"] = []
-                        while self.buf.unit > 0:
-                            tag = {}
+                        payload["entries"] = []
+                        while self.buf.hasunit():
+                            tag: dict = {}
                             tag["type"] = utils.unraw(self.buf.ru16l(), 2, {0x0001: "File Times"}, True)
                             tag["length"] = self.buf.ru16l()
                             tag["payload"] = {}
@@ -419,26 +422,26 @@ class ZipModule(module.RuminantModule):
                                     tag["unknown"] = True
 
                             self.buf.sapunit()
-                            entry["payload"]["entries"].append(tag)
+                            payload["entries"].append(tag)
                     case 0x5455:
                         entry["type"] = "Extended Timestamp"
                         flags = self.buf.ru8()
-                        if flags & 0x01 and self.buf.unit > 0:
-                            entry["payload"]["mtime"] = utils.unix_to_date(self.buf.ru32l())
-                        if flags & 0x02 and self.buf.unit > 0:
-                            entry["payload"]["ctime"] = utils.unix_to_date(self.buf.ru32l())
-                        if flags & 0x04 and self.buf.unit > 0:
-                            entry["payload"]["atime"] = utils.unix_to_date(self.buf.ru32l())
+                        if flags & 0x01 and self.buf.hasunit():
+                            payload["mtime"] = utils.unix_to_date(self.buf.ru32l())
+                        if flags & 0x02 and self.buf.hasunit():
+                            payload["ctime"] = utils.unix_to_date(self.buf.ru32l())
+                        if flags & 0x04 and self.buf.hasunit():
+                            payload["atime"] = utils.unix_to_date(self.buf.ru32l())
                     case 0x7875:
                         entry["type"] = "Unicode Path"
-                        entry["payload"]["version"] = self.buf.ru8()
-                        entry["payload"]["uid"] = int.from_bytes(self.buf.read(self.buf.ru8()), "little")
-                        entry["payload"]["gid"] = int.from_bytes(self.buf.read(self.buf.ru8()), "little")
+                        payload["version"] = self.buf.ru8()
+                        payload["uid"] = int.from_bytes(self.buf.read(self.buf.ru8()), "little")
+                        payload["gid"] = int.from_bytes(self.buf.read(self.buf.ru8()), "little")
                     case 0x9901:
                         entry["type"] = "AES Extra Data Field"
-                        entry["payload"]["version"] = self.buf.ru16l()
-                        entry["payload"]["vendor"] = self.buf.rs(2)
-                        entry["payload"]["cipher"] = utils.unraw(
+                        payload["version"] = self.buf.ru16l()
+                        payload["vendor"] = self.buf.rs(2)
+                        payload["cipher"] = utils.unraw(
                             self.buf.ru8(),
                             2,
                             {
@@ -448,7 +451,7 @@ class ZipModule(module.RuminantModule):
                             },
                             True,
                         )
-                        entry["payload"]["compression-mode"] = utils.unraw(
+                        payload["compression-mode"] = utils.unraw(
                             self.buf.ru16l(),
                             2,
                             constants.ZIP_COMPRESSION_ALGORITHMS,
@@ -458,7 +461,7 @@ class ZipModule(module.RuminantModule):
                         entry["type"] = "JAR indicator"
                     case _:
                         entry["type"] = f"Unknown (0x{hex(typ)[2:].zfill(4)})"
-                        entry["payload"] = self.buf.rh(self.buf.unit)
+                        payload = self.buf.rh(self.buf.unit)
                         entry["unknown"] = True
 
                 self.buf.sapunit()
@@ -477,9 +480,10 @@ class ZipModule(module.RuminantModule):
 
                     if file["meta"]["general-flags"]["raw"] & 0x0041:
                         if meta["key"] is None:
-                            meta["key"] = {}
-                            meta["key"]["name"] = self.buf.ph(12)
-                            meta["key"]["found"] = secrets.get(meta["key"]["name"]) is not None
+                            key_data: dict[str, Any] = {}
+                            meta["key"] = key_data
+                            key_data["name"] = self.buf.ph(12)
+                            key_data["found"] = secrets.get(key_data["name"]) is not None
 
                         key = secrets.get(meta["key"]["name"])
                         if isinstance(key, str):
@@ -488,27 +492,27 @@ class ZipModule(module.RuminantModule):
 
                         if key is not None:
                             file["password-header"] = ""
-                            fd = tempfile.TemporaryFile()
+                            tfd = tempfile.TemporaryFile()
 
-                            key = list(key)
+                            ikey: list[int] = list(cast(bytes, key))
                             for i in range(0, file["meta"]["compressed-size"]):
                                 c = self.buf.ru8()
-                                temp = (key[2] & 0xffff) | 2
+                                temp = (ikey[2] & 0xffff) | 2
                                 k = ((temp * (temp ^ 1)) >> 8) & 0xff
                                 c ^= k
 
                                 if i >= 12:
-                                    fd.write(bytes([c]))
+                                    tfd.write(bytes([c]))
                                 else:
                                     file["password-header"] += hex(c)[2:].zfill(2)
 
-                                key[0] = self.crc32_update(key[0], c)
-                                key[1] = (key[1] + (key[0] & 0xff)) & 0xffffffff
-                                key[1] = (key[1] * 134775813 + 1) & 0xffffffff
-                                key[2] = self.crc32_update(key[2], (key[1] >> 24) & 0xff)
+                                ikey[0] = self.crc32_update(ikey[0], c)
+                                ikey[1] = (ikey[1] + (ikey[0] & 0xff)) & 0xffffffff
+                                ikey[1] = (ikey[1] * 134775813 + 1) & 0xffffffff
+                                ikey[2] = self.crc32_update(ikey[2], (ikey[1] >> 24) & 0xff)
 
-                            fd.seek(0)
-                            fd = Buf(fd)
+                            tfd.seek(0)
+                            fd = Buf(tfd)
 
                             match file["meta"]["compression-method"]:
                                 case "Uncompressed":
@@ -531,11 +535,11 @@ class ZipModule(module.RuminantModule):
 
                             case "Deflate":
                                 with self.buf.sub(file["meta"]["compressed-size"]):
-                                    fd = tempfile.TemporaryFile()
-                                    utils.stream_deflate(self.buf, fd, self.buf.available())
-                                    fd.seek(0)
+                                    tfd = tempfile.TemporaryFile()
+                                    utils.stream_deflate(self.buf, tfd, self.buf.available())
+                                    tfd.seek(0)
 
-                                    file["data"] = chew(fd)
+                                    file["data"] = chew(tfd)
 
             meta["files"].append(file)
 
@@ -553,7 +557,7 @@ class ZipModule(module.RuminantModule):
                 meta["apk-signature"]["header-length"] = self.buf.ru64l()
 
                 meta["apk-signature"]["entries"] = []
-                while self.buf.unit > 0:
+                while self.buf.hasunit():
                     meta["apk-signature"]["entries"].append(self.read_attribute())
 
                 self.buf.sapunit()
@@ -570,11 +574,12 @@ class ZipModule(module.RuminantModule):
 class RIFFModule(module.RuminantModule):
     desc = "RIFF files.\nThis includes file types like WebP, WAV, AVI or DjVu."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) in (b"RIFF", b"AT&T")
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = {b"RIFF": "riff", b"AT&T": "djvu"}[self.buf.peek(4)]
 
         if meta["type"] == "djvu":
@@ -904,11 +909,12 @@ class RIFFModule(module.RuminantModule):
 class TarModule(module.RuminantModule):
     desc = "TAR files or more specifically USTAR files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(262)[257:] == b"ustar"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "tar"
 
         meta["name"] = self.buf.rs(100).rstrip(" ").rstrip("\x00")
@@ -977,11 +983,12 @@ class TarModule(module.RuminantModule):
 class ArModule(module.RuminantModule):
     desc = "Unix ar files like the ones produced for static libraries."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(8) == b"!<arch>\n"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "ar"
 
         self.buf.skip(8)
@@ -1013,11 +1020,12 @@ class ArModule(module.RuminantModule):
 class CpioModule(module.RuminantModule):
     desc = "ASCII cpio files like the ones used for the Linux initramfs."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(6) in (b"070701", b"070702")
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "cpio"
 
         meta["files"] = []
@@ -1060,11 +1068,12 @@ class CpioModule(module.RuminantModule):
 class HttpFramedModule(module.RuminantModule):
     desc = "HTTP framed streams like mjpeg."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(7) == b"--FRAME"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "http-frame"
         self.buf.rl()
         self.buf.rl()
@@ -1077,11 +1086,12 @@ class HttpFramedModule(module.RuminantModule):
 class JmodModule(module.RuminantModule):
     desc = "Java .jmod files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"\x4a\x4d\x01\x00"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "jmod"
 
         self.buf.skip(4)
@@ -1092,16 +1102,16 @@ class JmodModule(module.RuminantModule):
 
 
 class Span(object):
-    def __init__(self):
-        self.ranges = []
+    def __init__(self) -> None:
+        self.ranges: list[list[int]] = []
 
-    def add(self, address, length):
+    def add(self, address: int, length: int) -> None:
         self.ranges.append([address, address + length])
 
         self._fix()
 
-    def _fix(self):
-        new_ranges = []
+    def _fix(self) -> None:
+        new_ranges: list[list[int]] = []
         ranges = sorted(self.ranges, key=lambda x: x[0])
 
         for r in ranges:
@@ -1118,16 +1128,17 @@ class Span(object):
 class Uf2Module(module.RuminantModule):
     desc = "UF2 files (e.g. for RP2040)."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(8) == b"UF2\nWQ]\x9e"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "uf2"
 
         meta["blocks"] = []
         while self.buf.peek(4) == b"UF2\n":
-            block = {}
+            block: dict = {}
             self.buf.pasunit(512)
 
             block["offset"] = self.buf.tell()
@@ -1163,8 +1174,8 @@ class Uf2Module(module.RuminantModule):
                     self.buf.skip(4 - (block["bytes-used"] % 4))
 
                 block["extension-tags"] = []
-                while self.buf.unit > 0:
-                    tag = {}
+                while self.buf.hasunit():
+                    tag: dict = {}
 
                     tag["size"] = self.buf.ru8()
                     if tag["size"] == 0 and self.buf.pu24l() == 0:
@@ -1212,26 +1223,28 @@ class Uf2Module(module.RuminantModule):
             spans[family_id].add(int(block["address"][2:], 16), block["bytes-used"])
 
         with self.buf:
-            data = {}
+            data: dict = {}
 
             for k, v in spans.items():
                 data[k] = {}
                 for span in v.ranges:
-                    span = tuple(span)
+                    tspan = tuple(span)
 
-                    data[k][span] = bytearray(span[1] - span[0])
+                    data[k][tspan] = bytearray(tspan[1] - tspan[0])
 
             for block in meta["blocks"]:
                 family_id = block.get("family-id", "Generic")
-                span = None
+                bspan: tuple | None = None
                 for r in spans[family_id].ranges:
                     if int(block["address"][2:], 16) >= r[0]:
-                        span = tuple(r)
+                        bspan = tuple(r)
                         break
 
+                assert bspan is not None
+
                 self.buf.seek(block["offset"] + 32)
-                buf = data[family_id][span]
-                base = int(block["address"][2:], 16) - span[0]
+                buf = data[family_id][bspan]
+                base = int(block["address"][2:], 16) - bspan[0]
                 for i in range(0, block["bytes-used"]):
                     buf[base + i] = self.buf.ru8()
 
@@ -1250,11 +1263,12 @@ class DvdMpegSequenceModule(module.RuminantModule):
     dev = True
     desc = "DVD MPEG sequence files (the .VOB ones)."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.pu32() == 0x000001ba
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "mpeg-sequence"
 
         meta["packs"] = []
@@ -1288,11 +1302,12 @@ class DvdMpegSequenceModule(module.RuminantModule):
 class GrubModuleModule(module.RuminantModule):
     desc = "GRUB 2 module files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"mimg"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "grub-module"
 
         self.buf.skip(4)
@@ -1305,7 +1320,7 @@ class GrubModuleModule(module.RuminantModule):
         self.buf.pasunit(meta["data"]["size"] - 24)
         self.buf.skip(meta["data"]["offset"] - 24)
 
-        while self.buf.unit > 0:
+        while self.buf.hasunit():
             module = {}
             module["type"] = utils.unraw(
                 self.buf.ru32l(),
@@ -1348,11 +1363,12 @@ class GrubModuleModule(module.RuminantModule):
 class AndroidBackupModule(module.RuminantModule):
     desc = "Android Backup files produced by adb backup."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(15) == b"ANDROID BACKUP\n"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "android-backup"
         self.buf.skip(15)
         meta["version"] = int(self.buf.rl().decode("utf-8"))
@@ -1393,11 +1409,12 @@ class AndroidBackupModule(module.RuminantModule):
 class CabinetModule(module.RuminantModule):
     desc = "Microsoft cabinet files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"MSCF"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "cab"
 
         self.buf.skip(4)
@@ -1436,10 +1453,10 @@ class CabinetModule(module.RuminantModule):
             meta["header"]["next-cabinet"] = self.buf.rzs()
             meta["header"]["next-disk"] = self.buf.rzs()
 
-        fds = []
+        fds: list = []
         meta["folders"] = []
         for i in range(0, meta["header"]["folder-count"]):
-            folder = {}
+            folder: dict = {}
             folder["data-offset"] = self.buf.ru32l()
             folder["data-count"] = self.buf.ru16l()
             folder["compression"] = utils.unraw(
@@ -1506,7 +1523,7 @@ class CabinetModule(module.RuminantModule):
         self.buf.seek(meta["header"]["cffile-offset"])
         meta["files"] = []
         for i in range(0, meta["header"]["file-count"]):
-            file = {}
+            file: dict = {}
             file["uncompressed-size"] = self.buf.ru32l()
             file["uncompressed-folder-offset"] = self.buf.ru32l()
             file["folder-index"] = self.buf.ru16l()
@@ -1565,27 +1582,8 @@ class IwaModule(module.RuminantModule):
     desc = "IWA files."
     priority = 2
 
-    def clean(self, obj):
-        match obj.__class__.__name__:
-            case "dict":
-                for k, v in obj.items():
-                    obj[k] = self.clean(v)
-
-                return obj
-            case "list":
-                for i in range(0, len(obj)):
-                    obj[i] = self.clean(obj[i])
-
-                return obj
-            case "bytes":
-                try:
-                    return self.clean(utils.read_protobuf(Buf(obj), len(obj)))
-                except Exception:
-                    return obj.hex()
-            case _:
-                return obj
-
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if ctx["walk"]:
             return False
 
@@ -1610,8 +1608,28 @@ class IwaModule(module.RuminantModule):
 
                 buf.skip(length)
 
-    def chew(self):
-        meta = {}
+    def clean(self, obj):
+        match obj.__class__.__name__:
+            case "dict":
+                for k, v in obj.items():
+                    obj[k] = self.clean(v)
+
+                return obj
+            case "list":
+                for i in range(0, len(obj)):
+                    obj[i] = self.clean(obj[i])
+
+                return obj
+            case "bytes":
+                try:
+                    return self.clean(utils.read_protobuf(Buf(obj), len(obj)))
+                except Exception:
+                    return obj.hex()
+            case _:
+                return obj
+
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "iwa"
 
         data = []
@@ -1651,7 +1669,8 @@ class IwaModule(module.RuminantModule):
 class PcapNgModule(module.RuminantModule):
     desc = "pcapng files as produced by Wireshark."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"\x0a\x0d\x0d\x0a"
 
     def register_detectors(self):
@@ -1791,7 +1810,7 @@ class PcapNgModule(module.RuminantModule):
 
                             record["rdata"] = {}
                             record["rdata"]["options"] = []
-                            while self.buf.unit > 0:
+                            while self.buf.hasunit():
                                 opt = {}
                                 opt["code"] = utils.unraw(
                                     self.buf.ru16(),
@@ -2030,7 +2049,7 @@ class PcapNgModule(module.RuminantModule):
                             record["rdata"]["target-name"] = dns_read_name(base, length)
 
                             record["rdata"]["params"] = []
-                            while self.buf.unit > 0:
+                            while self.buf.hasunit():
                                 param = {}
                                 param["key"] = utils.unraw(
                                     self.buf.ru16(),
@@ -2053,7 +2072,7 @@ class PcapNgModule(module.RuminantModule):
                                 match param["key"]:
                                     case "alpn":
                                         param["value"] = []
-                                        while self.buf.unit > 0:
+                                        while self.buf.hasunit():
                                             param["value"].append(self.buf.rs(self.buf.ru8()))
                                     case _:
                                         param["value"] = self.buf.rh(param["length"])
@@ -2185,7 +2204,7 @@ class PcapNgModule(module.RuminantModule):
                             record["rdata"]["next-hashed-owner-name"] = self.buf.rh(record["rdata"]["hash-length"])
 
                             record["rdata"]["type-bitmaps"] = []
-                            while self.buf.unit > 0:
+                            while self.buf.hasunit():
                                 bitmap = {}
                                 bitmap["window"] = self.buf.ru8()
                                 bitmap["bitmap-length"] = self.buf.ru8()
@@ -2452,7 +2471,7 @@ class PcapNgModule(module.RuminantModule):
         packet["urgent-pointer"] = self.buf.ru16()
 
         packet["options"] = []
-        while self.buf.unit > 0:
+        while self.buf.hasunit():
             opt = {}
             opt["type"] = utils.unraw(
                 self.buf.ru8(),
@@ -2609,7 +2628,7 @@ class PcapNgModule(module.RuminantModule):
                     self.buf.pasunit(hdr["length"] * 8 + 6)
 
                     hdr["options"] = []
-                    while self.buf.unit > 0:
+                    while self.buf.hasunit():
                         opt = {}
                         typ = self.buf.ru8()
                         opt["type"] = {
@@ -2769,7 +2788,7 @@ class PcapNgModule(module.RuminantModule):
         ):
             packet["options"] = []
 
-            while self.buf.unit > 0:
+            while self.buf.hasunit():
                 opt = {}
                 opt["type"] = utils.unraw(
                     self.buf.ru8(),
@@ -2827,7 +2846,7 @@ class PcapNgModule(module.RuminantModule):
         packet = {}
 
         packet["values"] = []
-        while self.buf.unit > 0:
+        while self.buf.hasunit():
             tlv = {}
             tlv["tag"] = utils.unraw(
                 self.buf.rb(7),
@@ -2941,7 +2960,7 @@ class PcapNgModule(module.RuminantModule):
 
                     self.buf.pasunit(tlv["value"]["object-id-length"])
 
-                    if self.buf.unit > 0:
+                    if self.buf.hasunit():
                         tlv["value"]["object-id"] = utils.read_oid(self.buf)
                     self.buf.sapunit()
                 case "Port description" | "System name" | "System description":
@@ -3135,18 +3154,18 @@ class PcapNgModule(module.RuminantModule):
 
         del self.reassemble[identifier]
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "pcapng"
 
         meta["sections"] = []
-        self.id = 1
-        self.reassemble = {}
+        self.id: int = 1
+        self.reassemble: dict = {}
         self.register_detectors()
 
         while self.buf.available() > 0:
-            interfaces = {}
-            section = {}
+            interfaces: dict = {}
+            section: dict = {}
             section["offset"] = self.buf.tell()
 
             self.buf.skip(8)
@@ -3178,7 +3197,7 @@ class PcapNgModule(module.RuminantModule):
 
             section["blocks"] = []
 
-            while self.buf.unit > 0:
+            while self.buf.hasunit():
                 block = {}
                 block["type"] = utils.unraw(
                     self.buf.ru32l() if self.little else self.buf.ru32(),
@@ -3449,7 +3468,7 @@ class PcapNgModule(module.RuminantModule):
                                         True,
                                     )
 
-                                    self.buf.pasunit(self.buf.unit)
+                                    self.buf.pasunit(self.buf.unit if self.buf.unit is not None else 0)
 
                                     backup = self.buf.backup()
                                     try:
@@ -3511,15 +3530,16 @@ class PcapNgModule(module.RuminantModule):
 class NcsdModule(module.RuminantModule):
     desc = "NCSD Nintendo 3DS Game Card image files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if buf.available() < 512:
             return False
 
         return buf.peek(256 + 4)[256:] == b"NCSD"
 
-    def chew(self):
+    def chew(self) -> types.JSON:
         # https://www.3dbrew.org/wiki/NCSD
-        meta = {}
+        meta: dict = {}
         meta["type"] = "ncsd"
 
         meta["header"] = {}
@@ -3625,7 +3645,8 @@ class NcsdModule(module.RuminantModule):
 class NcchModule(module.RuminantModule):
     desc = "NCCH Nintendo 3DS files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if buf.available() < 512:
             return False
 
@@ -3700,9 +3721,9 @@ class NcchModule(module.RuminantModule):
 
         return exefs
 
-    def chew(self):
+    def chew(self) -> types.JSON:
         # https://www.3dbrew.org/wiki/NCCH#NCCH_Header
-        meta = {}
+        meta: dict = {}
         meta["type"] = "ncch"
 
         meta["header"] = {}
@@ -3801,7 +3822,7 @@ class NcchModule(module.RuminantModule):
                 match name:
                     case "plain":
                         region["parsed"]["strings"] = []
-                        while self.buf.unit > 0:
+                        while self.buf.hasunit():
                             region["parsed"]["strings"].append(self.buf.rzs())
 
                         while len(region["parsed"]["strings"]) > 0 and region["parsed"]["strings"][-1] == "":
@@ -3823,11 +3844,12 @@ class NcchModule(module.RuminantModule):
 class SmdhModule(module.RuminantModule):
     desc = "Nintendo 3DS SMDH icon files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"SMDH"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "smdh"
 
         self.buf.skip(4)
@@ -3945,11 +3967,12 @@ class SmdhModule(module.RuminantModule):
 class DarcModule(module.RuminantModule):
     desc = "Nintendo 3DS DARC archives."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"darc"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "darc"
 
         self.buf.skip(4)
