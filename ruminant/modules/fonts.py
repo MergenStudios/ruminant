@@ -1,12 +1,15 @@
-from .. import module, utils, constants
+from .. import module, utils, constants, types
+from ..buf import Buf
 from . import chew
+from typing import cast
 
 
 @module.register
 class TrueTypeModule(module.RuminantModule):
     desc = "TrueType font files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(5) in (b"\x00\x01\x00\x00\x00", b"OTTO\x00")
 
     def read_dsig(self):
@@ -54,8 +57,8 @@ class TrueTypeModule(module.RuminantModule):
 
         return dsig
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "truetype"
 
         self.buf.skip(4)
@@ -105,60 +108,60 @@ class TrueTypeModule(module.RuminantModule):
                         table["data"]["fs-first-char-index"] = self.buf.ru16()
                         table["data"]["fs-last-char-index"] = self.buf.ru16()
 
-                        if self.buf.unit >= 2:
+                        if self.buf.unit is None or self.buf.unit >= 2:
                             table["data"]["s-typo-descender"] = self.buf.ri16()
                         else:
                             self.buf.skipunit()
-                        if self.buf.unit >= 2:
+                        if self.buf.unit is None or self.buf.unit >= 2:
                             table["data"]["s-typo-line-gap"] = self.buf.ri16()
                         else:
                             self.buf.skipunit()
-                        if self.buf.unit >= 2:
+                        if self.buf.unit is None or self.buf.unit >= 2:
                             table["data"]["us-win-ascent"] = self.buf.ru16()
                         else:
                             self.buf.skipunit()
-                        if self.buf.unit >= 2:
+                        if self.buf.unit is None or self.buf.unit >= 2:
                             table["data"]["us-win-descent"] = self.buf.ru16()
                         else:
                             self.buf.skipunit()
-                        if self.buf.unit >= 4:
+                        if self.buf.unit is None or self.buf.unit >= 4:
                             table["data"]["ul-code-page-range1"] = self.buf.ru32()
                         else:
                             self.buf.skipunit()
-                        if self.buf.unit >= 4:
+                        if self.buf.unit is None or self.buf.unit >= 4:
                             table["data"]["ul-code-page-range2"] = self.buf.ru32()
                         else:
                             self.buf.skipunit()
-                        if self.buf.unit >= 2:
+                        if self.buf.unit is None or self.buf.unit >= 2:
                             table["data"]["sx-height"] = self.buf.ri16()
                         else:
                             self.buf.skipunit()
-                        if self.buf.unit >= 2:
+                        if self.buf.unit is None or self.buf.unit >= 2:
                             table["data"]["s-cap-height"] = self.buf.ri16()
                         else:
                             self.buf.skipunit()
-                        if self.buf.unit >= 2:
+                        if self.buf.unit is None or self.buf.unit >= 2:
                             table["data"]["us-default-char"] = self.buf.ru16()
                         else:
                             self.buf.skipunit()
-                        if self.buf.unit >= 2:
+                        if self.buf.unit is None or self.buf.unit >= 2:
                             table["data"]["us-break-char"] = self.buf.ru16()
                         else:
                             self.buf.skipunit()
-                        if self.buf.unit >= 2:
+                        if self.buf.unit is None or self.buf.unit >= 2:
                             table["data"]["us-max-context"] = self.buf.ru16()
                         else:
                             self.buf.skipunit()
-                        if self.buf.unit >= 2:
+                        if self.buf.unit is None or self.buf.unit >= 2:
                             table["data"]["us-lower-point-size"] = self.buf.ru16()
                         else:
                             self.buf.skipunit()
-                        if self.buf.unit >= 2:
+                        if self.buf.unit is None or self.buf.unit >= 2:
                             table["data"]["us-upper-point-size"] = self.buf.ru16()
                         else:
                             self.buf.skipunit()
                     case "cvt ":
-                        table["data"]["entry-count"] = self.buf.unit // 4
+                        table["data"]["entry-count"] = cast(int, self.buf.unit) // 4
                     case "fpgm" | "prep":
                         table["data"]["instruction-count"] = self.buf.unit
                     case "head":
@@ -216,7 +219,7 @@ class TrueTypeModule(module.RuminantModule):
                     case "maxp":
                         table["data"]["version"] = str(self.buf.ru16()) + "." + str(self.buf.ru16())
                         table["data"]["num-glyphs"] = self.buf.ru16()
-                        if table["data"]["version"] != "0.5" and self.buf.unit > 0:
+                        if table["data"]["version"] != "0.5" and self.buf.hasunit():
                             table["data"]["max-points"] = self.buf.ru16()
                             table["data"]["max-contours"] = self.buf.ru16()
                             table["data"]["max-component-points"] = self.buf.ru16()
@@ -240,7 +243,7 @@ class TrueTypeModule(module.RuminantModule):
 
                         table["data"]["entries"] = []
                         for i in range(0, count):
-                            entry = {}
+                            entry: dict = {}
                             platform_id = self.buf.ru16()
                             entry["platform"] = {
                                 0: "Unicode",
@@ -564,11 +567,12 @@ class Woff2Module(module.RuminantModule):
     dev = True
     desc = "WOFF2 font files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"wOF2"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "woff2"
 
         self.buf.skip(4)
