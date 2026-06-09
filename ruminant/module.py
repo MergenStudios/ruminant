@@ -9,6 +9,7 @@ class RuminantModule(object):
 
     def __init__(self, buf: buf.Buf):
         self.buf = buf
+        self.extra_ctx: dict = {}
 
     @staticmethod
     def identify(buf: buf.Buf, ctx={}) -> bool:

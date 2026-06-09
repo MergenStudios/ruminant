@@ -1,4 +1,4 @@
-from .. import module, utils, constants
+from .. import module, utils, constants, types
 from ..buf import Buf
 from . import chew
 import tempfile
@@ -18,7 +18,8 @@ debug = module.debug
 class TorrentModule(module.RuminantModule):
     desc = "BitTorrent files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         with buf:
             try:
                 if buf.read(1) != b"d":
@@ -37,8 +38,8 @@ class TorrentModule(module.RuminantModule):
             except Exception:
                 return False
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "magnet"
 
         meta["data"] = utils.read_bencode(self.buf)
@@ -50,11 +51,12 @@ class TorrentModule(module.RuminantModule):
 class Sqlite3Module(module.RuminantModule):
     desc = "sqlite3 database files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(16) == b"SQLite format 3\x00"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "sqlite3"
 
         self.buf.skip(16)
@@ -107,7 +109,8 @@ class Sqlite3Module(module.RuminantModule):
 class NbtModule(module.RuminantModule):
     desc = "Minecraft NBT files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return (not ctx["walk"]) and (buf.pu32() & 0xffffffc0 == 0x0a000000)
 
     def clean(self, root):
@@ -135,8 +138,8 @@ class NbtModule(module.RuminantModule):
             for elem in root:
                 self.parse(elem)
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "nbt"
 
         meta["data"] = {}
@@ -157,7 +160,8 @@ class McaModule(module.RuminantModule):
     priority = 1
     desc = "Minecraft chunk region files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if ctx["walk"]:
             return False
 
@@ -193,8 +197,10 @@ class McaModule(module.RuminantModule):
         except Exception:
             return False
 
-    def chew(self):
-        meta = {}
+        return False
+
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "mca"
 
         meta["chunk-count"] = 0
@@ -206,7 +212,7 @@ class McaModule(module.RuminantModule):
 
             if length != 0:
                 meta["chunk-count"] += 1
-                chunk = {}
+                chunk: dict = {}
                 meta["chunks"][f"({i % 32}, {i // 32})"] = chunk
 
                 chunk["offset"] = offset
@@ -258,7 +264,8 @@ class BlendModule(module.RuminantModule):
     dev = True
     desc = "Blender project files, currently kinda broken."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(7) == b"BLENDER"
 
     def r16(self):
@@ -289,8 +296,8 @@ class BlendModule(module.RuminantModule):
     def rptrh(self):
         return hex(self.rptr())[2:].zfill(8 if "32" in self.mode else 16)
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "blend"
         self.buf.skip(7)
         meta["mode"] = {"_v": "le32", "_V": "be32", "-v": "le64", "-V": "be64"}[self.buf.rs(2)]
@@ -354,7 +361,8 @@ class BlendModule(module.RuminantModule):
 class GitModule(module.RuminantModule):
     desc = "Git-related files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if buf.available() < 6:
             return False
 
@@ -372,8 +380,8 @@ class GitModule(module.RuminantModule):
         except Exception:
             return False
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "git"
 
         line = self.buf.rzs().split(" ")
@@ -386,7 +394,7 @@ class GitModule(module.RuminantModule):
         match meta["header"]["type"]:
             case "tree":
                 meta["data"] = []
-                while self.buf.unit > 0:
+                while self.buf.hasunit():
                     line = self.buf.rzs().split(" ")
                     meta["data"].append({
                         "filename": line[1],
@@ -439,7 +447,8 @@ class GitModule(module.RuminantModule):
 class OpenTimestampsProofModule(module.RuminantModule):
     desc = "OpenTimestamps Proof files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(31) == b"\x00OpenTimestamps\x00\x00Proof\x00\xbf\x89\xe2\xe8\x84\xe8\x92\x94"
 
     def read_op(self):
@@ -520,8 +529,8 @@ class OpenTimestampsProofModule(module.RuminantModule):
 
         return root
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "opentimestamps-proof"
 
         self.buf.skip(31)
@@ -542,7 +551,8 @@ class OpenTimestampsProofModule(module.RuminantModule):
 class JavaSerializationData(module.RuminantModule):
     desc = "Java serialization data as produced by java.io.ObjectOutputStream and similar classes."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(3) == b"\xac\xed\x00"
 
     def handle(self, obj):
@@ -727,8 +737,8 @@ class JavaSerializationData(module.RuminantModule):
 
         return obj
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "java-serialization"
 
         if debug:
@@ -738,7 +748,7 @@ class JavaSerializationData(module.RuminantModule):
         meta["version"] = self.buf.ru16()
 
         self.index = 0
-        self.handles = {}
+        self.handles: dict = {}
         meta["elements"] = []
         while True:
             bak = self.buf.backup()
@@ -763,11 +773,12 @@ class JavaSerializationData(module.RuminantModule):
 class SafeTensorsModule(module.RuminantModule):
     desc = "Hugging Face Safetensors files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.pu64l() < buf.available() and buf.peek(10)[8:] == b'{"'
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "safetensors"
 
         meta["header"] = json.loads(self.buf.rs(self.buf.ru64l()))
@@ -792,7 +803,8 @@ class SafeTensorsModule(module.RuminantModule):
 class GgufModule(module.RuminantModule):
     desc = "GGUF model files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"GGUF"
 
     def read_value(self, typ):
@@ -836,8 +848,8 @@ class GgufModule(module.RuminantModule):
     def rs(self):
         return self.buf.rs(self.buf.ru64l() if self.little else self.buf.ru64())
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "GGUF"
 
         meta["header"] = {}
@@ -948,7 +960,8 @@ class AcpiModule(module.RuminantModule):
     dev = True
     desc = "ACPI tables like the ones in /sys/firmware/acpi/tables."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if buf.available() < 8:
             return False
 
@@ -1303,8 +1316,8 @@ class AcpiModule(module.RuminantModule):
 
         return tbl
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "acpi"
 
         meta["table-name"] = self.buf.rs(4)
@@ -1388,7 +1401,8 @@ class AcpiModule(module.RuminantModule):
 class BplistModule(module.RuminantModule):
     desc = "Apple binary property lists."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(8) == b"bplist00" and buf.available() >= 40
 
     def read_size(self, op):
@@ -1410,8 +1424,8 @@ class BplistModule(module.RuminantModule):
             case _:
                 return obj.get("value")
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "bplist"
 
         self.buf.seek(self.buf.available() - 32)
@@ -1429,7 +1443,7 @@ class BplistModule(module.RuminantModule):
             self.buf.seek(meta["trailer"]["offset-table-offset"] + meta["trailer"]["offset-table-size"] * i)
             self.buf.seek(int.from_bytes(self.buf.read(meta["trailer"]["offset-table-size"]), "big"))
 
-            obj = {}
+            obj: dict = {}
             obj["offset"] = self.buf.tell() - 8
 
             op = self.buf.ru8()
@@ -1529,7 +1543,8 @@ class BplistModule(module.RuminantModule):
 class OsmPbfFormat(module.RuminantModule):
     desc = "OpenStreetMap protobuf files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if buf.available() < 15:
             return False
 
@@ -1544,13 +1559,13 @@ class OsmPbfFormat(module.RuminantModule):
                 return False
         return True
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "osm-pbf"
 
         meta["blobs"] = []
         while self.buf.available() > 0:
-            blob = {}
+            blob: dict = {}
             blob["header"] = {}
             blob["header"]["length"] = self.buf.ru32()
 
@@ -1713,7 +1728,8 @@ class StlModule(module.RuminantModule):
     priority = 1
     desc = "STL 3D model files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         try:
             with buf:
                 buf.skip(80)
@@ -1728,8 +1744,8 @@ class StlModule(module.RuminantModule):
         except Exception:
             return False
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "stl"
 
         meta["header"] = self.buf.rs(80)

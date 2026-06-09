@@ -1,7 +1,7 @@
 import uuid
 import struct
 import datetime
-from .. import module, utils
+from .. import module, utils, types
 from ..buf import Buf
 from . import chew
 
@@ -20,26 +20,27 @@ def mp4_decode_language(lang_bytes):
 class IsoModule(module.RuminantModule):
     desc = "ISO Base Media files.\nThis includes may file formats like MP4, HEIC/HEIF, AVIF or JPEG2000."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(8)[4:] in (b"ftyp", b"styp", b"jP  ", b"jumb")
 
-    def chew(self):
-        file = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
 
         self.mode = None
 
-        file["type"] = "iso"
-        file["atoms"] = []
+        meta["type"] = "iso"
+        meta["atoms"] = []
         while self.buf.available() >= 8:
-            file["atoms"].append(self.read_atom())
+            meta["atoms"].append(self.read_atom())
 
         try:
             with self.buf:
-                file["streams"] = self.parse_mdat(file["atoms"])
+                meta["streams"] = self.parse_mdat(meta["atoms"])
         except Exception:
             pass
 
-        return file
+        return meta
 
     def read_version(self, atom):
         version = self.buf.ru8()
@@ -1905,11 +1906,12 @@ class MatroskaModule(module.RuminantModule):
         0x1f43b675: ("Cluster", "skipped-master"),
     }
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"\x1a\x45\xdf\xa3"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "matroska"
 
         meta["tags"] = []
@@ -2027,11 +2029,12 @@ class MatroskaModule(module.RuminantModule):
 class OggModule(module.RuminantModule):
     desc = "Ogg files like OGG or OGV files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"OggS"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "ogg"
 
         meta["packets"] = []
@@ -2186,7 +2189,8 @@ class OggModule(module.RuminantModule):
 class MpegTsModule(module.RuminantModule):
     desc = "MPEG transport stream files like the ones served on the web by M3U8 playlists."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if buf.available() < 188:
             return False
         if buf.available() == 188:
@@ -2370,15 +2374,15 @@ class MpegTsModule(module.RuminantModule):
 
         return chunk
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "mpeg-ts"
         meta["chunks"] = []
 
-        self.programs = {}
-        self.es = {}
-        slack = {}
-        starts = {}
+        self.programs: dict = {}
+        self.es: dict = {}
+        slack: dict = {}
+        starts: dict = {}
 
         index = 0
         while self.buf.peek(1) == b"\x47":
@@ -2449,7 +2453,8 @@ class MpegTsModule(module.RuminantModule):
 class AsfModule(module.RuminantModule):
     desc = "Advanced Systems Format files like WMA or WMV files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.available() > 16 and buf.pguid() == "75b22630-668e-11cf-a6d9-00aa0062ce6c"
 
     def read_object(self):
@@ -2786,8 +2791,8 @@ class AsfModule(module.RuminantModule):
 
         return obj
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "asf"
 
         meta["objects"] = []
@@ -2802,7 +2807,8 @@ class SwfModule(module.RuminantModule):
     dev = True
     desc = "SWF Adobe Flash files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(3) in (b"FWS", b"CWS", b"ZWS")
 
     def read_rect(
@@ -3058,8 +3064,8 @@ class SwfModule(module.RuminantModule):
 
         return tags
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "swf"
 
         meta["compression"] = {"FWS": "none", "CWS": "zlib", "ZWS": "lzma"}[self.buf.rs(3)]
@@ -3098,11 +3104,12 @@ class SwfModule(module.RuminantModule):
 class DuckIvfModule(module.RuminantModule):
     desc = "Duck IVF video files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"DKIF"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "duck-ivf"
 
         self.buf.skip(4)
@@ -3132,17 +3139,18 @@ class DuckIvfModule(module.RuminantModule):
 class DiracModule(module.RuminantModule):
     desc = "BBC Dirac data units."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"BBCD"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "dirac"
 
         meta["units"] = []
         should_break = False
         while not should_break:
-            unit = {}
+            unit: dict = {}
             self.buf.skip(4)
 
             typ = self.buf.ru8()

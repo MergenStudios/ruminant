@@ -1,7 +1,9 @@
-from .. import module, utils
+from .. import module, utils, types
+from ..buf import Buf
 from . import chew
 import json
 import base64
+import binascii
 
 
 @module.register
@@ -9,7 +11,8 @@ class Utf8Module(module.RuminantModule):
     priority = 1
     desc = "UTF-8 encoded text.\nThis is detected on a best-effort basis and also tries to detect base64, XML or JSON encoding."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         try:
             assert buf.available() > 0 and buf.available() < 1000000
             for i in buf.peek(buf.available()).decode("utf-8"):
@@ -19,26 +22,27 @@ class Utf8Module(module.RuminantModule):
         except Exception:
             return False
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "text"
 
         content = self.buf.rs(self.buf.available())
 
         try:
             assert content.startswith("data:image/")
-            data = ";".join(content.split(";")[1:]).split(",")
-            encoding, data = data[0], ",".join(data[1:])
+            sdata = ";".join(content.split(";")[1:]).split(",")
+            encoding, data = sdata[0], ",".join(sdata[1:])
 
+            bdata: bytes
             match encoding:
                 case "utf8":
-                    data = data.encode("utf-8")
+                    bdata = data.encode("utf-8")
                 case "base64":
-                    data = base64.b64decode(data, validate=True)
+                    bdata = base64.b64decode(data, validate=True)
                 case _:
                     raise ValueError()
 
-            content = chew(data)
+            content = chew(bdata)
             meta["decoder"] = "data-uri"
             meta["encoding"] = encoding
         except Exception:
@@ -57,7 +61,7 @@ class Utf8Module(module.RuminantModule):
                             try:
                                 blob = chew(base64.b64decode(content + "=" * i, validate=True))
                                 break
-                            except base64.binascii.Error:
+                            except binascii.Error:
                                 pass
 
                         assert blob is not None
@@ -77,10 +81,11 @@ class Utf8Module(module.RuminantModule):
 class EmptyModule(module.RuminantModule):
     desc = "Empty files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.available() == 0
 
-    def chew(self):
+    def chew(self) -> types.JSON:
         return {"type": "empty"}
 
 
@@ -89,7 +94,8 @@ class ZeroesModule(module.RuminantModule):
     priorty = 2
     desc = "Files containing only zero bytes."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         with buf:
             first = True
             s = 0
@@ -101,7 +107,7 @@ class ZeroesModule(module.RuminantModule):
 
         return True
 
-    def chew(self):
+    def chew(self) -> types.JSON:
         self.buf.skip(self.buf.available())
         return {"type": "zeroes"}
 
@@ -111,7 +117,8 @@ class AndroidXmlModule(module.RuminantModule):
     dev = True
     desc = "Android binary XML files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.pu32l() == 0x00080003 and buf.pu64l() >> 32 <= buf.available()
 
     def read_chunk(self):
@@ -193,8 +200,8 @@ class AndroidXmlModule(module.RuminantModule):
 
         return chunk
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "android-xml"
 
         meta["root-chunk"] = self.read_chunk()
