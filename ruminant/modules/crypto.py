@@ -932,3 +932,52 @@ class OpenSshPrivateKeyModule(module.RuminantModule):
         meta["data"]["public-keys"] = [self.rb().hex() for i in range(0, meta["data"]["nkeys"])]
 
         return meta
+
+
+@module.register
+class EfiSignatureListModule(module.RuminantModule):
+    desc = "EFI signature lists."
+
+    GUIDS = "a5c059a1-94e4-4aa7-87b5-ab155c2bf072"
+
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
+        if buf.available() < 4:
+            return False
+
+        if buf.available() > 16 and buf.pguid() in EfiSignatureListModule.GUIDS:
+            return True
+
+        with buf:
+            buf.skip(4)
+            return buf.available() > 16 and buf.pguid() in EfiSignatureListModule.GUIDS
+
+    def chew(self) -> types.JSON:
+        meta: dict = {}
+        meta["type"] = "efi-signature-list"
+
+        if self.buf.pguid() not in EfiSignatureListModule.GUIDS:
+            meta["flags"] = self.buf.ru32l()
+
+        meta["guid"] = self.buf.rguid()
+        meta["signature-list-size"] = self.buf.ru32l()
+        self.buf.pasunit(meta["signature-list-size"] - 20)
+        meta["signature-header-size"] = self.buf.ru32l()
+        meta["signature-size"] = self.buf.ru32l()
+        meta["signature-header"] = self.buf.rh(meta["signature-header-size"])
+
+        meta["signatures"] = []
+        while self.buf.hasunit():
+            sig: dict = {}
+            sig["owner"] = self.buf.rguid()
+
+            self.buf.pasunit(min(meta["signature-size"], self.buf.available()))
+
+            sig["data"] = utils.read_der(self.buf)
+
+            self.buf.sapunit()
+            meta["signatures"].append(sig)
+
+        self.buf.sapunit()
+
+        return meta
