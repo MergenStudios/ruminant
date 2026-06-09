@@ -1602,6 +1602,8 @@ class IwaModule(module.RuminantModule):
                     return False
 
                 length = buf.ru24l()
+                if length == 0:
+                    return False
 
                 if buf.available() < length:
                     return False

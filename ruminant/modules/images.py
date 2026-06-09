@@ -1,5 +1,5 @@
 from . import chew
-from .. import module, utils, constants
+from .. import module, utils, constants, types
 from ..buf import Buf
 import zlib
 import datetime
@@ -228,6 +228,10 @@ class IRBModule(module.RuminantModule):
         },
     }
 
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
+        return buf.peek(18) == b"Photoshop 3.0\x008BIM" or buf.peek(4) == b"8BIM"
+
     def read_key(self):
         length = self.buf.ru32()
         if length > 0:
@@ -293,11 +297,8 @@ class IRBModule(module.RuminantModule):
 
         return desc, True
 
-    def identify(buf, ctx):
-        return buf.peek(18) == b"Photoshop 3.0\x008BIM" or buf.peek(4) == b"8BIM"
-
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "irb"
         meta["data"] = {}
 
@@ -310,7 +311,7 @@ class IRBModule(module.RuminantModule):
             if header != b"8BIM":
                 break
 
-            block = {}
+            block: dict = {}
 
             resource_id = self.buf.ru16()
             block["resource-id"] = self.RESOURCE_IDS.get(resource_id, "Unknown") + f" (0x{hex(resource_id)[2:].zfill(4)})"
@@ -388,7 +389,7 @@ class IRBModule(module.RuminantModule):
                         block["data"]["altitude"] = self.buf.ru32()
                     case 1028:
                         block["data"]["records"] = []
-                        while self.buf.unit > 2:
+                        while self.buf.unit is not None and self.buf.unit > 2:
                             self.buf.skip(1)
                             record = {}
 
@@ -475,7 +476,7 @@ class IRBModule(module.RuminantModule):
 
                                 block["data"]["slices"] = []
                                 for i in range(0, block["data"]["slice-count"]):
-                                    slic = {}
+                                    slic: dict = {}
                                     slic["id"] = self.buf.ru32()
                                     slic["group-id"] = self.buf.ru32()
                                     slic["origin"] = self.buf.ru32()
@@ -518,7 +519,7 @@ class IRBModule(module.RuminantModule):
                         block["data"]["paths"] = []
 
                         little = False
-                        while self.buf.unit >= 26:
+                        while self.buf.unit is not None and self.buf.unit >= 26:
                             path = {}
 
                             selector = self.buf.ru16()
@@ -586,6 +587,10 @@ class IRBModule(module.RuminantModule):
 @module.register
 class ICCProfileModule(module.RuminantModule):
     desc = "ICC profile files."
+
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
+        return buf.peek(12) == b"ICC_PROFILE\x00" or buf.peek(8)[4:] in (b"Lino", b"appl") or buf.peek(40)[36:] == b"acsp"
 
     def read_tag(self, offset, length):
         tag = {}
@@ -777,11 +782,8 @@ class ICCProfileModule(module.RuminantModule):
 
         return tag
 
-    def identify(buf, ctx):
-        return buf.peek(12) == b"ICC_PROFILE\x00" or buf.peek(8)[4:] in (b"Lino", b"appl") or buf.peek(40)[36:] == b"acsp"
-
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "icc-profile"
         meta["data"] = {}
 
@@ -969,18 +971,19 @@ class JPEGModule(module.RuminantModule):
         0x01: "TEM",
     }
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(3) == b"\xff\xd8\xff"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "jpeg"
 
         meta["chunks"] = []
         should_break = False
         slack = b""
         while self.buf.available() and not should_break:
-            chunk = {}
+            chunk: dict = {}
 
             assert self.buf.ru8() == 0xff, "wrong marker prefix"
             typ = self.buf.ru8()
@@ -1059,7 +1062,7 @@ class JPEGModule(module.RuminantModule):
                             if buf.ru32() > buf.available() + 4:
                                 break
 
-                        exmp = {}
+                        exmp: dict = {}
                         exmp["conforming"] = False
                         exmp["uuid"] = buf.rs(32)
                         exmp["length"] = buf.ru32()
@@ -1132,7 +1135,7 @@ class JPEGModule(module.RuminantModule):
                 chunk["data"]["component-count"] = component_count
                 chunk["data"]["components"] = []
                 for i in range(0, component_count):
-                    component = {}
+                    component: dict = {}
 
                     component["id"] = self.buf.ru8()
 
@@ -1179,8 +1182,8 @@ class JPEGModule(module.RuminantModule):
             elif typ == 0xdb:
                 chunk["tables"] = []
 
-                while self.buf.unit > 0:
-                    table = {}
+                while self.buf.hasunit():
+                    table: dict = {}
 
                     temp = self.buf.ru8()
 
@@ -1212,11 +1215,12 @@ class JPEGModule(module.RuminantModule):
 class PNGModule(module.RuminantModule):
     desc = "PNG files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(8) == b"\x89PNG\r\n\x1a\n"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "png"
 
         color_type = None
@@ -1231,7 +1235,7 @@ class PNGModule(module.RuminantModule):
 
             chunk_type = self.buf.read(4)
 
-            chunk = {
+            chunk: dict = {
                 "chunk-type": chunk_type.decode("utf-8"),
                 "length": length,
                 "flags": {
@@ -1938,14 +1942,15 @@ class TIFFModule(module.RuminantModule):
         12: "Double",
     }
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) in (b"II*\x00", b"MM\x00*", b"Exif") or buf.peek(8) in (
             b"FUJIFILM",
             b"SONY DSC",
         )
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "tiff"
 
         le = None
@@ -1975,7 +1980,7 @@ class TIFFModule(module.RuminantModule):
         meta["data"] = {}
         meta["data"]["tags"] = []
 
-        offset_queue = []
+        offset_queue: list[int] = []
         thumbnail_offset = None
         thumbnail_length = None
         thumbnail_tag = None
@@ -2005,7 +2010,7 @@ class TIFFModule(module.RuminantModule):
 
             try:
                 for i in range(0, entry_count):
-                    tag = {}
+                    tag: dict = {}
 
                     tag_id = self.buf.ru16l() if le else self.buf.ru16()
                     tag["id"] = self.TAG_IDS[mode].get(tag_id, "Unknown") + f" (0x{hex(tag_id)[2:].zfill(4)})"
@@ -2028,6 +2033,8 @@ class TIFFModule(module.RuminantModule):
                         else:
                             self.buf.seek(tag_offset + base)
 
+                        ivalue: int
+                        dvalue: dict
                         for i in range(0, count):
                             match field_type:
                                 case 1:
@@ -2045,19 +2052,19 @@ class TIFFModule(module.RuminantModule):
                                 case 3:
                                     tag["values"].append(self.buf.ru16l() if le else self.buf.ru16())
                                 case 4:
-                                    value = self.buf.ru32l() if le else self.buf.ru32()
-                                    tag["values"].append(value)
+                                    ivalue = self.buf.ru32l() if le else self.buf.ru32()
+                                    tag["values"].append(ivalue)
 
                                     if "IFD" in tag["id"]:
-                                        offset_queue.append(value)
+                                        offset_queue.append(ivalue)
                                 case 5:
-                                    value = {}
-                                    value["numerator"] = self.buf.ru32l() if le else self.buf.ru32()
-                                    value["denominator"] = self.buf.ru32l() if le else self.buf.ru32()
-                                    value["rational-approx"] = (
-                                        value["numerator"] / value["denominator"] if value["denominator"] else "NaN"
+                                    dvalue = {}
+                                    dvalue["numerator"] = self.buf.ru32l() if le else self.buf.ru32()
+                                    dvalue["denominator"] = self.buf.ru32l() if le else self.buf.ru32()
+                                    dvalue["rational-approx"] = (
+                                        dvalue["numerator"] / dvalue["denominator"] if dvalue["denominator"] else "NaN"
                                     )
-                                    tag["values"].append(value)
+                                    tag["values"].append(dvalue)
                                 case 6:
                                     tag["values"].append(self.buf.ri8l() if le else self.buf.ri8())
                                 case 7:
@@ -2068,13 +2075,13 @@ class TIFFModule(module.RuminantModule):
                                 case 9:
                                     tag["values"].append(self.buf.ri32l() if le else self.buf.ri32())
                                 case 10:
-                                    value = {}
-                                    value["numerator"] = self.buf.ri32l() if le else self.buf.ri32()
-                                    value["denominator"] = self.buf.ri32l() if le else self.buf.ri32()
-                                    value["rational-approx"] = (
-                                        value["numerator"] / value["denominator"] if value["denominator"] else "NaN"
+                                    dvalue = {}
+                                    dvalue["numerator"] = self.buf.ri32l() if le else self.buf.ri32()
+                                    dvalue["denominator"] = self.buf.ri32l() if le else self.buf.ri32()
+                                    dvalue["rational-approx"] = (
+                                        dvalue["numerator"] / dvalue["denominator"] if dvalue["denominator"] else "NaN"
                                     )
-                                    tag["values"].append(value)
+                                    tag["values"].append(dvalue)
                                 case 11:
                                     tag["values"].append(self.buf.rf32l() if le else self.buf.rf32())
                                 case 12:
@@ -2125,17 +2132,17 @@ class TIFFModule(module.RuminantModule):
                                     tag["parsed"] = {}
                                     buf = Buf(bytes.fromhex(tag["values"][0]))
 
-                                    temp = buf.ru32l()
-                                    flags = (temp >> 27) & 0x1f
+                                    itemp = buf.ru32l()
+                                    flags = (itemp >> 27) & 0x1f
                                     tag["parsed"]["flags"] = {
                                         "raw": flags,
                                         "representative": bool(flags & 0x02),
                                         "dependent-child": bool(flags & 0x04),
                                         "dependend-parent": bool(flags & 0x08),
                                     }
-                                    tag["parsed"]["format"] = utils.unraw((temp >> 24) & 0x07, 1, {0: "JPEG"})
+                                    tag["parsed"]["format"] = utils.unraw((itemp >> 24) & 0x07, 1, {0: "JPEG"})
                                     tag["parsed"]["type"] = utils.unraw(
-                                        temp & 0xffffff,
+                                        itemp & 0xffffff,
                                         3,
                                         {
                                             0x000000: "Undefined",
@@ -2192,11 +2199,12 @@ class TIFFModule(module.RuminantModule):
 class GifModule(module.RuminantModule):
     desc = "GIF files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(3) == b"GIF"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "gif"
 
         self.buf.skip(3)
@@ -2221,7 +2229,7 @@ class GifModule(module.RuminantModule):
         meta["blocks"] = []
         running = True
         while running:
-            block = {}
+            block: dict = {}
             block["offset"] = self.buf.tell()
 
             typ = self.buf.ru8()
@@ -2332,31 +2340,32 @@ class GifModule(module.RuminantModule):
 class HdrpMakernoteModule(module.RuminantModule):
     desc = "Google HDR+ Makernote data, reverse engineered by me :D."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"HDRP"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "hdrp-makernote"
 
         self.buf.skip(4)
         meta["version"] = self.buf.ru8()
 
-        content = bytearray(self.buf.read(self.buf.available()))
+        mcontent = bytearray(self.buf.read(self.buf.available()))
         key = 0x2515606b4a7791cd
 
         # really sneaky to use xorshift
         # too bad you can just google the magic multiplier
-        for i in range(0, len(content)):
+        for i in range(0, len(mcontent)):
             if i % 8 == 0:
                 key ^= (key >> 12) & 0xffffffffffffffff
                 key ^= (key << 25) & 0xffffffffffffffff
                 key ^= (key >> 27) & 0xffffffffffffffff
                 key = (key * 0x2545f4914f6cdd1d) & 0xffffffffffffffff
 
-            content[i] ^= (key >> (8 * (i % 8))) & 0xff
+            mcontent[i] ^= (key >> (8 * (i % 8))) & 0xff
 
-        content = gzip.decompress(content)
+        content = gzip.decompress(mcontent)
 
         buf = Buf(content)
 
@@ -2375,11 +2384,12 @@ class HdrpMakernoteModule(module.RuminantModule):
 class PsdModule(IRBModule):
     desc = "Adobe Photoshop files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"8BPS"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "psd"
 
         self.buf.skip(4)
@@ -2424,7 +2434,7 @@ class PsdModule(IRBModule):
         meta["layers"]["records"] = []
 
         for i in range(0, abs(meta["layers"]["record-count"])):
-            record = {}
+            record: dict = {}
             record["rect"] = [self.buf.ru32() for i in range(0, 4)]
             record["channel-count"] = self.buf.ru16()
             record["channels"] = [
@@ -2478,7 +2488,7 @@ class PsdModule(IRBModule):
         self.buf.skip(self.buf.ru32())
 
         meta["layers"]["effects"] = []
-        while self.buf.unit > 4:
+        while self.buf.unit is not None and self.buf.unit > 4:
             effect = {}
             self.buf.skip(4)
             effect["key"] = self.buf.rs(4)
@@ -2511,11 +2521,11 @@ class PsdModule(IRBModule):
             match effect["key"]:
                 case "Patt" | "Pat2" | "Pat3":
                     effect["data"] = []
-                    while self.buf.unit > 0:
+                    while self.buf.hasunit():
                         self.buf.pushunit()
                         self.buf.setunit(self.buf.ru32())
 
-                        pattern = {}
+                        pattern: dict = {}
                         pattern["version"] = self.buf.ru32()
                         pattern["image-mode"] = utils.unraw(
                             self.buf.ru32(),
@@ -2581,7 +2591,8 @@ class JpegXlModule(module.RuminantModule):
     dev = True
     desc = "JPEG XL files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(2) == b"\xff\x0a"
 
     def ru32(self, d0, d1, d2, d3, o0=0, o1=0, o2=0, o3=0):
@@ -2594,8 +2605,8 @@ class JpegXlModule(module.RuminantModule):
         else:
             return self.buf.rbl(d) + o
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "jpeg-xl"
 
         self.buf.skip(2)
@@ -2655,7 +2666,8 @@ class JpegXlModule(module.RuminantModule):
 class DicomModule(module.RuminantModule):
     desc = "DICOM files like the ones you get on a CD after an MRI."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(128 + 4)[128:] == b"DICM"
 
     def read_dataset(self):
@@ -2788,8 +2800,8 @@ class DicomModule(module.RuminantModule):
 
         return tag
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "dicom"
 
         meta["preamble"] = chew(self.buf.read(128))
@@ -2811,11 +2823,12 @@ class DicomModule(module.RuminantModule):
 class ExrModule(module.RuminantModule):
     desc = "OpenEXR files"
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(4) == b"v/1\x01"
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "exr"
 
         self.buf.skip(4)
@@ -2901,7 +2914,7 @@ class ExrModule(module.RuminantModule):
                     )
                 case "stringvector":
                     header["payload"] = []
-                    while self.buf.unit > 0:
+                    while self.buf.hasunit():
                         header["payload"].append(self.buf.rs(self.buf.ru32l()))
                 case "v2f":
                     header["payload"] = [self.buf.rf32l(), self.buf.rf32l()]
@@ -2935,7 +2948,8 @@ class ExrModule(module.RuminantModule):
 class IcoModule(module.RuminantModule):
     desc = "Microsoft ICO files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         if buf.available() < 6:
             return False
 
@@ -2963,8 +2977,8 @@ class IcoModule(module.RuminantModule):
 
         return True
 
-    def chew(self):
-        meta = {}
+    def chew(self) -> types.JSON:
+        meta: dict = {}
         meta["type"] = "ico"
 
         self.buf.skip(2)
@@ -3003,7 +3017,8 @@ class XcfModule(module.RuminantModule):
     dev = True
     desc = "GIMP XCF files."
 
-    def identify(buf, ctx):
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
         return buf.peek(9) == b"gimp xcf "
 
     def rp(self):
@@ -3246,9 +3261,9 @@ class XcfModule(module.RuminantModule):
 
         return properties
 
-    def chew(self):
+    def chew(self) -> types.JSON:
         # https://developer.gimp.org/core/standards/xcf/#the-image-structure
-        meta = {}
+        meta: dict = {}
         meta["type"] = "xcf"
 
         self.buf.skip(9)
