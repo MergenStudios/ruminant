@@ -78,9 +78,6 @@ class Buf(object):
 
     def peek(self, length: int) -> bytes:
         """Read length bytes without changing any internal state."""
-        if self._bits != 0:
-            raise ValueError("unaligned")
-
         if self.unit is not None:
             unit = max(self.unit - length, 0)
             assert unit >= 0, f"unit overread by {-unit} byte{'s' if unit != -1 else ''}"
