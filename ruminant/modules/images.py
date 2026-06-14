@@ -3356,26 +3356,56 @@ class QoiModule(module.RuminantModule):
         meta["channels"] = utils.unraw(self.buf.ru8(), 1, {0x03: "RGB", 0x04: "RGBA"}, True)
         meta["colorspace"] = utils.unraw(self.buf.ru8(), 1, {0x00: "sRGB with linear alpha", 0x01: "all channels linear"}, True)
 
+        op_rgb = 0
+        op_rgba = 0
+        op_index = 0
+        op_diff = 0
+        op_luma = 0
+        op_run = 0
+
         pixels = meta["width"] * meta["height"]
         while pixels > 0:
             op = self.buf.ru8()
 
-            if op == 0b11111110:
-                self.buf.skip(3)
-                pixels -= 1
-            elif op == 0b11111111:
-                self.buf.skip(4)
-                pixels -= 1
-            elif op & 0b11000000 == 0b10000000:
-                self.buf.skip(1)
-                pixels -= 1
-            else:
-                if op & 0b11000000 == 0b11000000:
-                    pixels -= (op & 0b00111111) + 1
-                else:
+            match op:
+                case 0b11111110:
+                    self.buf.skip(3)
                     pixels -= 1
+                    op_rgb += 1
+                case 0b11111111:
+                    self.buf.skip(4)
+                    pixels -= 1
+                    op_rgba += 1
+                case _:
+                    match op >> 6:
+                        case 0b00:
+                            pixels -= 1
+                            op_index += 1
+                        case 0b01:
+                            pixels -= 1
+                            op_diff += 1
+                        case 0b10:
+                            self.buf.skip(1)
+                            pixels -= 1
+                            op_luma += 1
+                        case 0b11:
+                            pixels -= (op & 0b00111111) + 1
+                            op_run += 1
 
-            if self.buf.available() >= 8 and self.buf.pu64() == 1:
-                self.buf.skip(8)
+        meta["ops"] = {
+            "RGB": op_rgb,
+            "RGBA": op_rgba,
+            "INDEX": op_index,
+            "DIFF": op_diff,
+            "LUMA": op_luma,
+            "RUN": op_run,
+            "total": op_rgb + op_rgba + op_index + op_diff + op_luma + op_run,
+            "pixels": meta["width"] * meta["height"],
+        }
+
+        meta["has-footer"] = False
+        if self.buf.available() >= 8 and self.buf.pu64() == 1:
+            self.buf.skip(8)
+            meta["has-footer"] = True
 
         return meta
