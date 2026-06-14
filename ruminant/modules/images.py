@@ -1208,6 +1208,50 @@ class JPEGModule(module.RuminantModule):
             self.buf.skipunit()
             self.buf.popunit()
 
+        if self.buf.available() > 8:
+            with self.buf:
+                self.buf.seek(self.buf.size() - 4)
+                has_seft = self.buf.read(4) == b"SEFT"
+
+            if has_seft:
+                meta["seft"] = {}
+
+                length = self.buf.size()
+
+                self.buf.seek(length - 8)
+                headers_block_length = self.buf.ru32l()
+                headers_block_start_offset = length - (headers_block_length + 8)
+                self.buf.seek(headers_block_start_offset + 4)
+                meta["seft"]["version"] = self.buf.ru32l()
+                record_count = self.buf.ru32l()
+                meta["seft"]["record-count"] = record_count
+
+                meta["seft"]["records"] = []
+                for i in range(0, record_count):
+                    record: dict = {}
+                    record["padding"] = self.buf.ru16l()
+                    record["type"] = self.buf.ru16l()
+                    offset = self.buf.ru32l()
+                    record["offset"] = offset
+                    record_length = self.buf.ru32l()
+                    record["length"] = record_length
+                    record["content"] = {}
+
+                    with self.buf:
+                        self.buf.seek(headers_block_start_offset - offset)
+                        record["content"]["padding"] = self.buf.ru16l()
+                        record["content"]["type"] = self.buf.ru16l()
+                        key_length = self.buf.ru32l()
+                        record["content"]["key-length"] = key_length
+                        value_length = record_length - key_length - 8
+                        record["content"]["value-length"] = value_length
+                        record["content"]["name"] = self.buf.rs(key_length)
+                        record["content"]["value"] = self.buf.rs(value_length, "latin-1")
+
+                    meta["seft"]["records"].append(record)
+
+                self.buf.skip(8)
+
         return meta
 
 
