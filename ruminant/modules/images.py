@@ -3336,3 +3336,46 @@ class XcfModule(module.RuminantModule):
             layer["mask-pointer"] = self.rp()
 
         return meta
+
+
+@module.register
+class QoiModule(module.RuminantModule):
+    desc = "qoi files."
+
+    @staticmethod
+    def identify(buf: Buf, ctx={}) -> bool:
+        return buf.peek(4) == b"qoif"
+
+    def chew(self) -> types.JSON:
+        meta: dict = {}
+        meta["type"] = "qoi"
+
+        self.buf.skip(4)
+        meta["width"] = self.buf.ru32()
+        meta["height"] = self.buf.ru32()
+        meta["channels"] = utils.unraw(self.buf.ru8(), 1, {0x03: "RGB", 0x04: "RGBA"}, True)
+        meta["colorspace"] = utils.unraw(self.buf.ru8(), 1, {0x00: "sRGB with linear alpha", 0x01: "all channels linear"}, True)
+
+        pixels = meta["width"] * meta["height"]
+        while pixels > 0:
+            op = self.buf.ru8()
+
+            if op == 0b11111110:
+                self.buf.skip(3)
+                pixels -= 1
+            elif op == 0b11111111:
+                self.buf.skip(4)
+                pixels -= 1
+            elif op & 0b11000000 == 0b10000000:
+                self.buf.skip(1)
+                pixels -= 1
+            else:
+                if op & 0b11000000 == 0b11000000:
+                    pixels -= (op & 0b00111111) + 1
+                else:
+                    pixels -= 1
+
+            if self.buf.available() >= 8 and self.buf.pu64() == 1:
+                self.buf.skip(8)
+
+        return meta
