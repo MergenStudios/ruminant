@@ -1519,11 +1519,11 @@ class PNGModule(module.RuminantModule):
                 case "CgBI":
                     headerless = True
                     chunk["data"]["payload"] = self.buf.rh(self.buf.unit)
-                case "cLLi":
+                case "cLLi" | "cLLI":
                     chunk["data"]["max-cll"] = self.buf.ru32()
                     chunk["data"]["max-fall"] = self.buf.ru32()
-                case "mDCv":
-                    chunk["data"]["color-primaries"] = [self.buf.ru32() for _ in range(0, 3)]
+                case "mDCv" | "mDCV":
+                    chunk["data"]["color-primaries"] = [(self.buf.ru16(), self.buf.ru16()) for _ in range(0, 3)]
                     chunk["data"]["white-point-chromaticity"] = self.buf.ru32()
                     chunk["data"]["max-luminance"] = self.buf.ru32()
                     chunk["data"]["min-luminance"] = self.buf.ru32()
